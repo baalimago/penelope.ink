@@ -12,7 +12,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/baalimago/clai-in-wasmer-sh-poc/mcp/mcpserver"
+	"github.com/baalimago/penelope.ink/mcp/mcpserver"
 )
 
 const version = "2.1.0"

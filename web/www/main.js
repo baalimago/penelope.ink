@@ -4,11 +4,23 @@
 import { Terminal } from "./node_modules/@xterm/xterm/lib/xterm.mjs";
 import { FitAddon } from "./node_modules/@xterm/addon-fit/lib/addon-fit.mjs";
 import { LineEditor, split, isShellLine } from "./shell.js";
-import { AudioInputs } from "./audio.js";
+import { AudioInputs, platformOf, withOsVersion } from "./audio.js";
 import { HoodView, Machine } from "./hood.js";
 import { Minutes } from "./minutes.js";
 import { Doodles } from "./doodles.js";
+import { Sketch } from "./sketch.js";
 import { Recordings } from "./recordings.js";
+import { VoiceKeeper } from "./voicekeeper.js";
+import { SegmentKeeper } from "./segmentkeeper.js";
+import { People } from "./people.js";
+import { Review } from "./review.js";
+import { RunLog } from "./runlog.js";
+import { LoadBar } from "./loadbar.js";
+import { Pointer } from "./pointer.js";
+import { Downloads } from "./downloads.js";
+import { NotebookKeeper } from "./notebookkeeper.js";
+import { watchForUpdates } from "./update.js";
+import { isReady, pending } from "./loadplan.js";
 
 // No convertEol: clai's output comes through the machine's terminal, which turns "\n" into
 // "\r\n" itself unless the program asked for raw output.
@@ -17,7 +29,10 @@ const fit = new FitAddon();
 term.loadAddon(fit);
 term.open(document.querySelector("#terminal"));
 fit.fit();
-addEventListener("resize", () => fit.fit());
+addEventListener("resize", () => {
+  fit.fit();
+  window.minutes?.placeNotes();
+});
 
 const hood = document.querySelector("#hood");
 const peekButton = document.querySelector("#peek");
@@ -41,6 +56,7 @@ const showTab = (name) => {
     fit.fit();
     term.focus();
   }
+  if (name === "runlogs") minutes?.renderLogs();
 };
 for (const tab of tabs) tab.onclick = () => showTab(tab.dataset.tab);
 window.showTab = showTab;
@@ -50,31 +66,45 @@ const view = new HoodView(model, hood);
 window.hoodModel = model;
 
 term.writeln("Booting a WASIX v2 machine…");
-const worker = new Worker("./worker.js", { type: "module" });
+// index.html started the worker, and kept what it said while this module loaded.
+const worker = window.machineWorker ?? new Worker("./worker.js", { type: "module" });
 const size = () => ({ rows: term.rows, cols: term.cols });
-// `?go` adds the Go toolchain to the machine (see worker.js), which costs a 40 MB download.
-const go = new URLSearchParams(location.search).has("go");
-worker.postMessage({ size: size(), go });
-let finished = null;
+worker.postMessage({ size: size() });
+// The app is built at once: what it runs waits for the boot, and then for its programs.
+let bash = true;
+let home = "/";
+let up = null;
+const booted = new Promise((resolve) => (up = resolve));
+// The worker's report of its files (loadplan.js), and the bar that shows it.
+let loading = null;
+const loadbar = new LoadBar(document, () => worker.postMessage({ retry: true }));
+// What resolves each run under way, by its id.
+const finishing = new Map();
+let runs = 0;
 let minutes = null;
+// What `download FILE` sends from the machine, saved as the browser's downloads.
+const downloads = new Downloads();
+// The action of the app's line that has the console, whose printed lines its run log takes.
+let onConsole = null;
 // The loudest of each input's latest samples, for the waveform.
 const peaks = new Map();
-const audio = new AudioInputs(
-  (name, bytes) => {
+const audio = new AudioInputs({
+  send: (name, bytes) => {
     const samples = new Int16Array(bytes.buffer, bytes.byteOffset, bytes.byteLength >> 1);
     let peak = 0;
     for (const s of samples) peak = Math.max(peak, Math.abs(s));
     peaks.set(name, peak / 32768);
-    if (name === "mic") minutes?.level(Math.min(1, Math.max(...peaks.values()) * 1.6));
+    if (name === "mic" || !audio.inputs().some((i) => i.name === "mic")) minutes?.level(Math.min(1, Math.max(...peaks.values()) * 1.6));
     worker.postMessage({ samples: { name, bytes } }, [bytes.buffer]);
   },
-  (text) => {
+  notice: (text) => {
     term.write(`\r\n\x1b[33m${text}\x1b[0m\r\n`);
     minutes?.status(text);
   },
-  (share) => minutes?.offerShare(share),
-  () => minutes?.render(),
-);
+  changed: () => minutes?.render(),
+  // /run/audio/devices follows what the page can record: a share, once made, is a sink.
+  relist: () => booted.then(() => worker.postMessage({ devices: audio.listing() })),
+});
 // What `play` (audio/play.sh) wrote to /run/audio/play, in a player until it is closed.
 const play = (bytes) => {
   const url = URL.createObjectURL(new Blob([bytes]));
@@ -94,39 +124,66 @@ const play = (bytes) => {
   document.querySelector(".players").append(player);
   element.play().catch(() => {});
 };
-worker.onerror = (event) => term.writeln(`\x1b[31mworker failed: ${event.message}\x1b[0m`);
-const { bash, home } = await new Promise((ready) => {
-  worker.onmessage = ({ data }) => {
-    if (data.log) term.writeln(data.log);
-    if (data.ready) ready(data);
-    if (data.output) term.write(data.output);
-    if (data.events) model.add(JSON.parse(data.events));
-    if (data.outbox) for (const message of data.outbox) minutes?.receive(message);
-    if (data.audio) audio.want(data.audio);
-    if (data.play) play(data.play);
-    if (data.error) term.writeln(`\x1b[31m${data.error}\x1b[0m`);
-    if ("status" in data) finished(data.status);
-  };
-});
-term.writeln(bash
-  ? "Ready. Try \x1b[1mls /bin\x1b[0m, \x1b[1mclai h\x1b[0m, or \x1b[1mhelp\x1b[0m.\r\n"
-  : "Ready, without bash: run \x1b[1mmake packages\x1b[0m for it. Try \x1b[1mclai h\x1b[0m.\r\n");
-if (!go) term.writeln("\x1b[2mOpen this page with \x1b[1m?go\x1b[0m\x1b[2m and the machine mounts the Go toolchain at /go.\x1b[0m\r\n");
-document.querySelector("#machine-chip").textContent = "wasmer.sh · WASIX v2 kernel: running";
-term.onResize(() => worker.postMessage({ size: size() }));
+worker.onerror = (event) => {
+  term.writeln(`\x1b[31mworker failed: ${event.message}\x1b[0m`);
+  loadbar.show({ stopped: `The machine's worker failed: ${event.message}. Reload to try again.` });
+};
+// A line from the worker, above the prompt when the terminal waits at one.
+let editor = null;
+const say = (text) => term.write(editor && !editor.busy ? `\r\x1b[2K${text}\r\n${editor.prompt}${editor.line}` : `${text}\r\n`);
+const heard = ({ data }) => {
+  if (data.log) say(data.log);
+  if (data.load) {
+    loading = data.load;
+    loadbar.show({ files: loading });
+    const left = pending(loading).join(" ");
+    if (left !== document.body.dataset.loading) {
+      document.body.dataset.loading = left;
+      minutes?.render();
+    }
+  }
+  if (data.waiting) {
+    loadbar.show({ waiting: data.waiting });
+    if (data.waiting.length) say(`\x1b[2mWaiting for ${data.waiting.join(", ")} to load…\x1b[0m`);
+  }
+  if (data.ready) {
+    ({ bash, home } = data);
+    cwd = home;
+    say(bash
+      ? "Ready. Try \x1b[1mls /bin\x1b[0m, \x1b[1mclai h\x1b[0m, or \x1b[1mhelp\x1b[0m."
+      : "Ready, without bash: run \x1b[1mmake packages\x1b[0m for it. Try \x1b[1mclai help\x1b[0m.");
+    document.querySelector("#machine-chip").textContent = "wasmer.sh · WASIX v2 kernel: running";
+    term.onResize(() => worker.postMessage({ size: size() }));
+    up();
+  }
+  if (data.output) {
+    term.write(data.output);
+    if (onConsole) minutes?.printed(onConsole, data.output);
+  }
+  if (data.events) model.add(JSON.parse(data.events));
+  if (data.outbox) for (const message of data.outbox) if (!downloads.receive(message)) minutes?.receive(message);
+  if (data.audio) audio.want(data.audio);
+  if (data.play) play(data.play);
+  if (data.error) say(`\x1b[31m${data.error}\x1b[0m`);
+  if (data.stopped) loadbar.show({ stopped: data.error });
+  if ("status" in data) {
+    // As bash does, the prompt goes on a new line after ^C killed the program.
+    if (data.status === 128 + 2) term.write("\r\n");
+    finishing.get(data.id)?.(data.status);
+    finishing.delete(data.id);
+  }
+};
 
 // Runs `args` from `path`, with `env` and `extra` (variables for this run only), resolving to
-// its exit status and streaming what it prints.
+// its exit status and streaming what it prints. A `detached` run is a service: it is not on
+// the console, so nothing typed there, nor its ^C or hangup, reaches it.
 const env = new Map();
-const exec = (path, args, extra = {}) => new Promise((resolve) => {
-  finished = (status) => {
-    // As bash does, the prompt goes on a new line after ^C killed the program.
-    if (status === 128 + 2) term.write("\r\n");
-    resolve(status);
-  };
+const exec = (path, args, extra = {}, detached = false) => booted.then(() => new Promise((resolve) => {
+  const id = ++runs;
+  finishing.set(id, resolve);
   const vars = [...env, ...Object.entries(extra)];
-  worker.postMessage({ path, args, env: vars.map(([key, value]) => `${key}=${value}`) });
-});
+  worker.postMessage({ path, args, id, detached, env: vars.map(([key, value]) => `${key}=${value}`) });
+}));
 
 // Each line is a new `bash -c` in the page's working directory, so `cd` and `export` are
 // the page's. Its $0 says who asked for it, which the under-the-hood view follows.
@@ -145,12 +202,12 @@ const resolvePath = (target) => {
 
 const builtins = {
   help: () => term.writeln(
-    (bash ? "<line>              run the line with bash; /bin has coreutils, grep, rg, git…\r\n"
+    (bash ? "<line>              run the line with bash; /bin has coreutils, grep, rg, ffmpeg…\r\n"
       : "clai <args>         run clai on the WASIX v2 machine\r\n") +
     "cd DIR              change the directory the next lines start in\r\n" +
     "export KEY=VALUE    set a variable for every program, such as OPENAI_API_KEY\r\n" +
-    (bash ? "play FILE           play a sound file, such as a recording, in the page\r\n" : "") +
-    (go ? "go <args>           build and run Go in the machine's /go toolchain (~/examples has four)\r\n" : "") +
+    (bash ? "play FILE           play a sound file, such as a recording, in the page\r\n" +
+      "download FILE       save a file of the machine in this browser's downloads\r\n" : "") +
     "clear               clear the screen"),
   clear: () => term.clear(),
   export: (...assignments) => {
@@ -169,19 +226,27 @@ const builtins = {
   },
 };
 
-async function run(line, tag = "terminal", extra = {}) {
+// `positional` are the line's $1, $2…, which keep newlines and are not inherited.
+async function run(line, tag = "terminal", extra = {}, positional = [], detached = false) {
   const args = split(line);
   if (args.length === 0) return 0;
+  if (!isReady(loading, "machine") && tag === "terminal") term.writeln("\x1b[2mWaiting for the machine to boot…\x1b[0m");
+  await booted;
   if (builtins[args[0]] && !isShellLine(line)) return (await builtins[args[0]](...args.slice(1))) ?? 0;
-  if (bash) return exec("/bin/bash", ["bash", "-c", `cd -- ${quote(cwd)} || exit\n${line}`, tag], extra);
-  return exec(args[0].includes("/") ? args[0] : `/bin/${args[0]}`, args);
+  if (bash) return exec("/bin/bash", ["bash", "-c", `cd -- ${quote(cwd)} || exit\n${line}`, tag, ...positional], extra, detached);
+  return exec(args[0].includes("/") ? args[0] : `/bin/${args[0]}`, args, {}, detached);
 }
 
-// While a program runs, what is typed goes to the machine's terminal as it is.
+// While a program runs, what is typed goes to the machine's terminal as it is. Only the
+// terminal's lines and the app's own lines (machine.run) are on the console; the app's
+// background runs are not, so nothing typed there is theirs.
 const encoder = new TextEncoder();
-const type = (data) => worker.postMessage({ input: encoder.encode(data) });
-const editor = new LineEditor(term, "$ ", run, type);
+const type = (data) => booted.then(() => worker.postMessage({ input: encoder.encode(data) }));
+editor = new LineEditor(term, "$ ", run, type);
+worker.onmessage = heard;
+for (const data of window.machineSaid?.splice(0) ?? []) heard({ data });
 // The screen's text, with the lines the terminal wrapped joined again.
+window.terminalSelection = () => term.getSelection();
 window.terminalText = () => {
   const buffer = term.buffer.active;
   let text = "";
@@ -212,27 +277,56 @@ window.writeFile = (path, text) => serially(() => exec(
   "/bin/bash",
   ["bash", "-c", 'd=${1%/*}; [ "$d" = "$1" ] && d=.; mkdir -p "$d" && printf %s "$2" > "$1"', "write", path, text],
 ));
-// The examples the page ships for ?go, in the guest's home before it says it is ready: a tab has
-// something to build before the reader has a way to write a file.
-if (go && bash) {
-  const { files } = await (await fetch("./examples/index.json")).json();
-  for (const [path, text] of Object.entries(files)) await window.writeFile(`${home}/examples/${path}`, text);
-  const names = [...new Set(Object.keys(files).map((path) => path.split("/")[0]))].join(", ");
-  term.writeln(`\x1b[2mGo examples in \x1b[0m\x1b[1m~/examples\x1b[0m\x1b[2m (${names}). Try \x1b[0m\x1b[1mcd ~/examples/hello && go run .\x1b[0m\r\n`);
-}
+const note = (verb, line) => `\r\x1b[2K\x1b[2m# Penelope ${verb}: ${line.replaceAll("\n", "; ")}\x1b[0m\r\n`;
 const machine = {
-  run: (line, action, extra) => serially(async () => {
+  // `started()` is called as the line starts, after the lines queued before it.
+  run: (line, action, extra, positional, started) => serially(async () => {
     editor.busy = true;
-    term.write(`\r\x1b[2K\x1b[2m# Minutes ran: ${line.replaceAll("\n", "; ")}\x1b[0m\r\n`);
+    term.write(note("ran", line));
+    started?.();
+    onConsole = action;
     try {
-      return await run(line, action, extra);
+      return await run(line, action, extra, positional);
     } finally {
+      onConsole = null;
       editor.busy = false;
       term.write(editor.prompt + editor.line);
     }
   }),
-  type,
+  // Runs the line beside the others, detached from the console: the terminal stays free, and
+  // the line reads /dev/null, not what is typed there.
+  spawn: (line, action, extra, positional) => {
+    term.write(note("started", line) + (editor.busy ? "" : editor.prompt + editor.line));
+    return run(`exec </dev/null\n${line}`, action, extra, positional, true);
+  },
+  // Creates the file at `path` in the machine at once, from a detached run, whatever the
+  // terminal runs: how Stop reaches the recording it belongs to.
+  touch: (path, action = "touch") => exec("/bin/bash", ["bash", "-c", ': > "$1"', action, path], {}, true),
+  booted,
+  // Whether everything a stage of the load plan needs is on the machine (loadplan.js).
+  has: (stage) => isReady(loading, stage),
 };
+// The voice library and the meetings' segments kept in this browser, New recording's people row and
+// "Who is speaking?": they reach Minutes' runs, list and player through `minutes`, made just below.
+const voices = new VoiceKeeper({ run: (...args) => minutes.run(...args), indexedDB: globalThis.indexedDB });
+const people = new People({
+  root: document.querySelector("#people"),
+  people: () => voices.people(),
+  meetings: () => minutes?.meetings ?? [],
+  read: (path) => minutes.readMeeting(path, "Read the last meeting of that name", true),
+});
+// Transcribe again's row: ticked for whom the meeting named, so it reads no meeting.
+const againPeople = new People({
+  root: document.querySelector("#again-people"),
+  people: () => voices.people(),
+  meetings: () => [],
+  read: async () => null,
+});
+const review = new Review({
+  root: document.querySelector("#speakers"),
+  play: (start, end, button) => minutes.proof.playSpan(start, end, button),
+  choose: (choices, names) => minutes.choose(choices, names),
+});
 minutes = new Minutes({
   root: document.querySelector("#app"),
   machine,
@@ -256,19 +350,65 @@ minutes = new Minutes({
         // Kept for this tab only.
       }
     },
+    remove: (key) => {
+      try {
+        localStorage.removeItem(key);
+      } catch {
+        // Nothing was kept to forget.
+      }
+    },
   },
   recordings: new Recordings(globalThis.indexedDB),
+  notebook: new NotebookKeeper(globalThis.indexedDB),
+  voices,
+  segments: new SegmentKeeper(globalThis.indexedDB),
+  people,
+  againPeople,
+  pointer: new Pointer(document),
+  review,
+  runlog: new RunLog({ indexedDB: globalThis.indexedDB, secrets: () => minutes?.secrets() ?? [] }),
+  // A note about a failure points at the peek and opens its terminal.
+  peek: showTab,
+  anchor: peekButton,
+  terminal: {
+    write: (text) => term.write(text),
+    // Writes `text` and returns markers of its first line and of the line after it. Writes are
+    // queued, so the markers are set once the terminal has taken what came before.
+    mark: (text) => {
+      const span = { start: null, end: null };
+      term.write("", () => { span.start = term.registerMarker(0); });
+      term.write(text, () => { span.end = term.registerMarker(0); });
+      return span;
+    },
+    reveal: ({ start, end }) => {
+      if (!start || start.isDisposed) return;
+      const last = Math.max(start.line, (end && !end.isDisposed ? end.line : start.line + 1) - 1);
+      term.scrollToLine(Math.max(0, start.line - 2));
+      term.selectLines(start.line, last);
+    },
+  },
   config: window.minutesConfig ?? {},
+  platform: platformOf(navigator),
 });
 minutes.start();
+// What the audio note says depends on the macOS version, which Chromium tells when asked.
+withOsVersion(minutes.platform, navigator).then((platform) => { minutes.platform = platform; });
 new Doodles(document, model).start();
+new Sketch(document).start();
 window.minutes = minutes;
+// A newer deploy of the site is offered as a reload, once nothing under way would stop.
+watchForUpdates({ win: window, doc: document, busy: () => minutes.working() });
 
 // The microphone is asked for up front, so that the browser names its audio inputs; ffmpeg in
 // the machine then lists them all, and the agent picks which to record (audio/ffmpeg.sh).
-const findDevices = async () => worker.postMessage({ devices: await audio.discover() });
+const findDevices = async () => {
+  await audio.discover();
+  audio.relist();
+  minutes.render();
+};
 navigator.mediaDevices?.addEventListener("devicechange", () => findDevices());
 await findDevices();
+await booted;
 
 if (bash) document.body.dataset.bash = "true";
 document.body.dataset.ready = "true";

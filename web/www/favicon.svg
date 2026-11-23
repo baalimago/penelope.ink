@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Penelope, the red pen with a bow, popping out of a corner of the yellow pad. -->
+  <rect x="4" y="8" width="56" height="53" rx="12" fill="#fff5b4" stroke="#d5c67c" stroke-width="2"/>
+  <path d="M5 23h54M5 35h54M5 47h54" stroke="#93bde4" stroke-width="1.6"/>
+  <path d="M14 9v51" stroke="#e08a80" stroke-width="1.6"/>
+  <g transform="translate(32 34) rotate(16) scale(1.12) translate(-32 -30)">
+    <path d="M24.5 47h15l-5.5 8h-4z" fill="#d6dae2" stroke="#9aa0ab" stroke-width=".8" stroke-linejoin="round"/>
+    <circle cx="32" cy="55.6" r="1.5" fill="#c0392b"/>
+    <rect x="23.5" y="43.5" width="17" height="4.5" rx="1.2" fill="#7a2620"/>
+    <rect x="22" y="21" width="20" height="23" fill="#e2574c"/>
+    <rect x="22" y="21" width="4.5" height="23" fill="#f07c70"/>
+    <rect x="37.5" y="21" width="4.5" height="23" fill="#b83b31"/>
+    <rect x="21" y="9.5" width="22" height="12.5" rx="5" fill="#a8352c"/>
+    <rect x="21" y="19.5" width="22" height="3.2" rx="1.2" fill="#8e2a1f"/>
+    <path d="M41 11.5h2.2a1 1 0 0 1 1 1v12a2 2 0 0 1-2 2H42a1 1 0 0 1-1-1z" fill="#d6dae2" stroke="#9aa0ab" stroke-width=".6"/>
+    <circle cx="25.4" cy="37" r="2.3" fill="#ffb3c7" opacity=".9"/>
+    <circle cx="38.6" cy="37" r="2.3" fill="#ffb3c7" opacity=".9"/>
+    <ellipse cx="28" cy="30.5" rx="3.5" ry="4.3" fill="#fff"/>
+    <ellipse cx="36" cy="30.5" rx="3.5" ry="4.3" fill="#fff"/>
+    <circle cx="28.5" cy="31.4" r="2" fill="#2a1210"/>
+    <circle cx="36.5" cy="31.4" r="2" fill="#2a1210"/>
+    <circle cx="29.2" cy="30.5" r=".65" fill="#fff"/>
+    <circle cx="37.2" cy="30.5" r=".65" fill="#fff"/>
+    <path d="M24.9 27.6l-1.6-1M26.1 26.6l-.9-1.5M39.1 27.6l1.6-1M37.9 26.6l.9-1.5" stroke="#2a1210" stroke-width=".8" stroke-linecap="round"/>
+    <path d="M29.2 38.4q2.8 2.6 5.6 0" fill="none" stroke="#4a1a14" stroke-width="1.2" stroke-linecap="round"/>
+    <path d="M32 9.5C25 1 15 2.5 17.5 9.5c1.6 5 8 4.6 14.5 0z" fill="#ff8fb8" stroke="#d94f86" stroke-width="1"/>
+    <path d="M32 9.5c7-8.5 17-7 14.5 0-1.6 5-8 4.6-14.5 0z" fill="#ff8fb8" stroke="#d94f86" stroke-width="1"/>
+    <rect x="29" y="6.5" width="6" height="6" rx="2.2" fill="#f06a9f" stroke="#d94f86" stroke-width=".9"/>
+  </g>
+</svg>

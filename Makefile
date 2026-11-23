@@ -1,4 +1,4 @@
-# `make poc` builds the Go port, clai and the MCP server ports for it, slivingdoc with libgit2,
+# `make dev` builds the Go port, clai and the MCP server ports for it, slivingdoc with libgit2,
 # and the page's WASIX v2 machine, downloads the registry packages the machine's /bin holds, then serves the page and
 # opens it. See README.md for what each piece is.
 
@@ -16,27 +16,62 @@ RUSTUP_HOME ?= $(if $(wildcard $(HOME)/.rustup/toolchains/*),$(HOME)/.rustup,$(H
 CARGO := $(CARGO_HOME)/bin/cargo
 export CARGO_HOME RUSTUP_HOME
 
-.PHONY: poc serve check build packages go-package submodules clean FORCE
+.PHONY: dev check build dist check-dist deploy packages submodules clean FORCE
 
 # The page's own crate needs Rust; say so in words a first-time reader can act on.
 CARGO_MISSING = @test -x $(CARGO) || { echo "no cargo at $(CARGO): install rustup, see Prerequisites in README.md"; exit 1; }
 
-poc: build go-package
+dev: build
 	cd $(WEB) && node server.mjs --open
 
-serve: build
-	cd $(WEB) && node server.mjs
-
 # Headless: runs `clai h`, `clai help`, shell lines and an MCP server in the page and checks what
-# they print, and builds and runs a Go program with the toolchain the page mounts at /go.
-check: build go-package
+# they print.
+check: build
 	cd $(WEB) && npx playwright install chromium && npm test
 
 build: $(WWW)/clai.wasm $(WWW)/bin/index.json $(WWW)/ca-certificates.crt $(WWW)/pkg/clai_web.js \
-	$(WWW)/packages/index.json $(WWW)/examples/index.json $(WEB)/node_modules
+	$(WWW)/packages/index.json $(WEB)/node_modules
 
+# The page as a static site for Wasmer Edge, in dist/: edge/'s wasmer.toml, app.yaml and
+# static-web-server settings, and in dist/public the page, what it loads from node_modules (the
+# packages web/server.mjs serves) and nothing of the check's, stamped with its version so an open
+# page offers a reload once a newer one is up. `cd dist && wasmer deploy` puts it on Edge.
+DIST := $(CURDIR)/dist
+NODE_PACKAGES := @xterm @fontsource marked
+
+dist: build
+	rm -rf $(DIST)
+	mkdir -p $(DIST)/public/node_modules
+	cp -R edge/. $(DIST)/
+	cp -R $(WWW)/. $(DIST)/public/
+	cd $(WEB)/node_modules && cp -R $(NODE_PACKAGES) $(DIST)/public/node_modules/
+	node $(WEB)/compress-dist.mjs $(DIST)/public
+	node $(WEB)/stamp-dist.mjs $(DIST)/public
+	@du -sh $(DIST)/public
+
+# The dist as Edge serves it, in headless Chromium (web/check-dist.mjs). DIST_URL=... checks a
+# site that is already up instead, such as the deployed app.
+check-dist: dist
+	cd $(WEB) && npx playwright install chromium && node check-dist.mjs
+
+# `make deploy` ships the site: check-dist rebuilds dist from the tree and checks it, then
+# wasmer deploy pushes it. dist/ starts from edge/ each time, so the owner an earlier deploy wrote
+# into dist/app.yaml is gone: OWNER=<user or namespace> names it, else wasmer deploy asks.
+OWNER ?=
+deploy: check-dist
+	@command -v wasmer >/dev/null || { echo "no wasmer on PATH: see Hosting it on Wasmer Edge in README.md"; exit 1; }
+	cd $(DIST) && wasmer deploy $(if $(OWNER),--owner $(OWNER))
+
+# `make submodules` clones each submodule that is not checked out yet, at the commit the
+# parent records. One that is checked out is never touched: it stays on its branch and
+# commit until you move it yourself (`git submodule update` by hand, or git in it).
+# The page's crate builds against components/wasmer, whose workspace needs two of its own
+# submodules; its test suites' submodules stay out.
+clone-missing = for p in $$(git -C $(1) submodule status $(2) | sed -n 's/^-[0-9a-f]* \([^ ]*\).*/\1/p'); do \
+	git -C $(1) submodule update --init --depth 1 -- "$$p" || exit 1; done
 submodules:
-	git submodule update --init --depth 1
+	@$(call clone-missing,.,)
+	@$(call clone-missing,components/wasmer,lib/wasixv2/codegen lib/napi)
 
 $(GO): | submodules
 	cd components/go/src && ./make.bash
@@ -101,9 +136,9 @@ $(WWW)/bin/launcher.sh: mcp/launcher.sh
 
 # Wrappers in /usr/local/bin, which comes before /bin on PATH: ffmpeg gives /bin/ffmpeg the
 # page's audio inputs as PulseAudio devices (audio/ffmpeg.sh); play plays sound files in the page
-# (audio/play.sh); go gives the toolchain the page mounts at /go (research/go-toolchain/go.sh)
-# its GOROOT.
-WRAPPERS := ffmpeg play go
+# (audio/play.sh); cp drops the mode preservation /bin/cp cannot do on WASI (machine/cp.sh);
+# download saves a file of the machine as a download of the browser's (machine/download.sh).
+WRAPPERS := ffmpeg play cp download
 
 # ffmpeg and ffprobe for wasm32-wasi, built with the wasi-sdk from an ffmpeg release: audio only
 # and without threads (audio/ffmpeg/build.sh). Both are in /bin.
@@ -120,8 +155,21 @@ $(FFMPEG_SRC)/configure:
 	tar xJf $(FFMPEG_SRC).tar.xz -C $(FFMPEG_SRC) --strip-components 1
 	rm $(FFMPEG_SRC).tar.xz
 
-$(FFMPEG_BUILD)/ffmpeg: $(WASI_SDK) $(FFMPEG_SRC)/configure audio/ffmpeg/build.sh audio/ffmpeg/wasi_compat.h
-	audio/ffmpeg/build.sh $(WASI_SDK) $(FFMPEG_SRC) $(FFMPEG_BUILD)
+# LAME, the MP3 encoder ffmpeg is built with (libmp3lame): clai encodes the pieces of a long
+# recording as MP3 before it sends them to be transcribed.
+LAME_VERSION := 3.100
+LAME_SHA256 := ddfe36cab873794038ae2c1210557ad34857a4b6bdc515785d1da9e175b1da1e
+LAME_SRC := $(CURDIR)/.tools/lame-$(LAME_VERSION)
+
+$(LAME_SRC)/configure:
+	mkdir -p $(LAME_SRC)
+	curl -fsSL https://downloads.sourceforge.net/project/lame/lame/$(LAME_VERSION)/lame-$(LAME_VERSION).tar.gz -o $(LAME_SRC).tar.gz
+	echo "$(LAME_SHA256)  $(LAME_SRC).tar.gz" | $(SHA256) -c -
+	tar xzf $(LAME_SRC).tar.gz -C $(LAME_SRC) --strip-components 1
+	rm $(LAME_SRC).tar.gz
+
+$(FFMPEG_BUILD)/ffmpeg: $(WASI_SDK) $(FFMPEG_SRC)/configure $(LAME_SRC)/configure audio/ffmpeg/build.sh audio/ffmpeg/wasi_compat.h
+	audio/ffmpeg/build.sh $(WASI_SDK) $(FFMPEG_SRC) $(FFMPEG_BUILD) $(LAME_SRC)
 
 $(WWW)/bin/ffmpeg.wasm $(WWW)/bin/ffprobe.wasm: $(FFMPEG_BUILD)/ffmpeg
 	@mkdir -p $(@D)
@@ -131,14 +179,9 @@ $(WWW)/bin/%.sh: audio/%.sh
 	@mkdir -p $(@D)
 	cp $< $@
 
-$(WWW)/bin/go.sh: research/go-toolchain/go.sh
+$(WWW)/bin/%.sh: machine/%.sh
 	@mkdir -p $(@D)
 	cp $< $@
-
-# The Go toolchain as a package the page mounts at /go, fetched only when the page asks
-# (research/go-toolchain/bundle.sh).
-go-package:
-	sh research/go-toolchain/bundle.sh
 
 BUILT := $(PROGRAMS) ffmpeg ffprobe
 
@@ -150,11 +193,6 @@ $(WWW)/bin/index.json: $(BUILT:%=$(WWW)/bin/%.wasm) $(WWW)/bin/launcher.sh $(WRA
 # them. The machine mounts them at /etc/ssl/certs/ca-certificates.crt.
 $(WWW)/ca-certificates.crt:
 	node -e 'process.stdout.write(require("tls").rootCertificates.join("\n") + "\n")' > $@
-
-# The Go examples the page writes into the guest's ~/examples when it is opened with ?go. These
-# are the files a reader edits; index.json is the one request the page makes for all of them.
-$(WWW)/examples/index.json: FORCE
-	node -e 'const fs = require("node:fs"); const dir = process.argv[1]; const files = {}; const walk = (at, rel) => { for (const name of fs.readdirSync(at).sort()) { const full = at + "/" + name; if (fs.statSync(full).isDirectory()) walk(full, rel + name + "/"); else if (name !== "index.json") files[rel + name] = fs.readFileSync(full, "utf8"); } }; walk(dir, ""); fs.writeFileSync(dir + "/index.json", JSON.stringify({ files }, null, 2) + "\n");' $(WWW)/examples
 
 # bash, coreutils and the rest, from registry.wasmer.io: web/packages.txt lists them.
 packages: $(WWW)/packages/index.json
@@ -170,12 +208,12 @@ $(WWW)/pkg/clai_web.js: $(WASM_BINDGEN) FORCE | submodules
 
 $(WASM_BINDGEN):
 	$(CARGO_MISSING)
-	$(CARGO) install wasm-bindgen-cli --version $(WASM_BINDGEN_VERSION) --locked --root $(CURDIR)/.tools
+	cd $(WEB) && $(CARGO) install wasm-bindgen-cli --version $(WASM_BINDGEN_VERSION) --locked --root $(CURDIR)/.tools
 
 $(WEB)/node_modules: $(WEB)/package-lock.json
 	cd $(WEB) && npm ci
 	touch $@
 
 clean:
-	rm -rf $(WEB)/target $(WWW)/pkg $(WWW)/packages $(WWW)/go $(WWW)/bin $(WWW)/clai.wasm $(WWW)/ca-certificates.crt $(WEB)/node_modules .tools .build
+	rm -rf $(DIST) $(WEB)/target $(WWW)/pkg $(WWW)/packages $(WWW)/bin $(WWW)/clai.wasm $(WWW)/ca-certificates.crt $(WEB)/node_modules .tools .build
 	cd components/go/src && ./clean.bash

@@ -1,6 +1,6 @@
-/* Minutes as a yellow legal pad on a desk, written in pencil. Every line of text sits on a rule:
+/* Minutes as a yellow legal pad on a desk, written in ink. Every line of text sits on a rule:
    each block is a whole number of rules tall, and the rules are drawn at the text's baseline.
-   handwriting.js writes the notes out word by word. The machine below stays as style.css draws
+   handwriting.js shows new notes in wet ink that dries. The machine below stays as style.css draws
    it. */
 
 @font-face { font-family: Caveat; font-weight: 400; font-display: swap; src: url("./node_modules/@fontsource/caveat/files/caveat-latin-400-normal.woff2") format("woff2"); }
@@ -11,6 +11,8 @@
   --pad-ink: #3d3f44; --pad-accent: #c0392b; --pad-paper: #f7f3ea; --pad-line: #ddd5c1;
   --sheet: #fff5b4; --edge: #e7da8f;
   --rule: 32px; --base: 24px;
+  /* Where the pad's red margin is drawn, from the sheet's left edge. */
+  --margin-x: 78px;
 }
 
 /* The header and the sidebar: warm paper beside the pad. */
@@ -23,6 +25,9 @@ body, .top { background: var(--pad-paper); }
 .chip { background: none; border: 1px solid #9ec3e6; border-radius: 0; color: #4d463c; }
 .sidebar { flex-basis: 280px; padding: 28px 24px; background: var(--pad-paper); border-right: 1px solid var(--pad-line); font-family: var(--hand); }
 .sidehead { padding: 18px 0 6px; font: 700 20px var(--hand); letter-spacing: 0; text-transform: none; color: #8a7f68; border-bottom: 1px solid var(--pad-line); }
+/* The list scrolls, and a scroll box clips both ways: it reaches 10px into the sidebar's padding on
+   each side, its content padded back, so the ring round the open meeting's title has room. */
+.meetings { margin-inline: -10px; padding-inline: 10px; }
 .meeting { border-radius: 0; padding: 12px 0; border-bottom: 1px solid #ece5d6; }
 .meeting:hover, .meeting[aria-current=true] { background: none; }
 .meeting strong { font: 700 23px/1.1 var(--hand); color: #3b3b3b; }
@@ -34,7 +39,7 @@ body, .top { background: var(--pad-paper); }
 .new, .dark { background: var(--pad-accent); }
 
 /* The desk, and the pad on it: a binding with punched holes, a blank head, a double margin, rules,
-   grain, a stack of sheets under it and a curled corner. */
+   grain and a stack of sheets under it. */
 .app {
   position: relative;
   background:
@@ -43,9 +48,6 @@ body, .top { background: var(--pad-paper); }
     repeating-linear-gradient(0deg, rgba(120, 100, 70, .05) 0 2px, transparent 2px 5px),
     #e4dccb;
 }
-.app::before, .app::after { content: ""; position: absolute; right: 30px; bottom: 0; width: 70px; height: 70px; pointer-events: none; }
-.app::before { z-index: 1; background: #e4dccb; clip-path: polygon(100% 0, 100% 100%, 0 100%); }
-.app::after { z-index: 2; background: linear-gradient(135deg, transparent 49%, rgba(0, 0, 0, .12) 50%, #f8eeb0 53%, #fff9d4 70%, #e6d78a); box-shadow: -6px -6px 12px -6px rgba(0, 0, 0, .25); clip-path: polygon(0 100%, 100% 0, 0 0); }
 .content {
   position: relative; max-width: 1240px; margin: 18px 30px 0 22px; padding: calc(var(--rule) * 3) 56px calc(var(--rule) * 2) 110px;
   gap: 0; font: 24px/var(--rule) var(--hand); color: var(--pad-ink); border-radius: 3px 3px 0 0;
@@ -55,7 +57,7 @@ body, .top { background: var(--pad-paper); }
     radial-gradient(circle at 50% 33px, rgba(40, 30, 20, .55) 0 5px, rgba(40, 30, 20, .15) 6px, transparent 7.5px) 34px 0 / 46px 46px repeat-x,
     linear-gradient(transparent calc(var(--rule) * 2 - 6px), rgba(192, 57, 43, .45) calc(var(--rule) * 2 - 6px) calc(var(--rule) * 2 - 5px), transparent 0 calc(var(--rule) * 2 - 3px), rgba(192, 57, 43, .45) 0 calc(var(--rule) * 2 - 2px), transparent 0) 0 0 / 100% 100% no-repeat,
     linear-gradient(var(--sheet) 0 calc(var(--rule) * 2 - 6px), transparent 0) 0 0 / 100% 100% no-repeat,
-    linear-gradient(90deg, transparent 78px, rgba(192, 57, 43, .5) 78px 79px, transparent 79px 82px, rgba(192, 57, 43, .42) 82px 83px, transparent 83px),
+    linear-gradient(90deg, transparent var(--margin-x), rgba(192, 57, 43, .5) var(--margin-x) calc(var(--margin-x) + 1px), transparent calc(var(--margin-x) + 1px) calc(var(--margin-x) + 4px), rgba(192, 57, 43, .42) calc(var(--margin-x) + 4px) calc(var(--margin-x) + 5px), transparent calc(var(--margin-x) + 5px)),
     repeating-linear-gradient(transparent 0 calc(var(--rule) - 1px), #93bde4 calc(var(--rule) - 1px) var(--rule)) 0 calc(var(--base) + 1px) / 100% var(--rule),
     linear-gradient(90deg, rgba(255, 255, 255, .35), transparent 30%, transparent 75%, rgba(150, 120, 40, .06)),
     var(--sheet);
@@ -65,6 +67,10 @@ body, .top { background: var(--pad-paper); }
 
 /* On the pad, every block is a whole number of rules tall, with nothing between them but rules. */
 .content h1 { position: relative; top: 4px; font: 700 60px/calc(var(--rule) * 2) var(--hand); letter-spacing: -.02em; color: #26282c; transform: rotate(-.6deg); transform-origin: left; }
+/* The open meeting's title renames it (Minutes.editTitle): a wavy underline says so, and it becomes a field in the same hand. */
+.content h1.renamable { cursor: var(--pen-tap); }
+.content h1.renamable:hover, .content h1.renamable:focus-visible { text-decoration: underline wavy 2px var(--pad-accent); text-underline-offset: 8px; outline: none; }
+.content h1 .title-edit { width: 100%; height: auto; margin: 0; padding: 0; border: 0; border-bottom: 2px dashed var(--pad-accent); background: transparent; font: inherit; letter-spacing: inherit; color: inherit; outline: none; }
 .meeting-head { align-items: center; gap: 0 16px; }
 .meeting-head .quiet { font: 22px/var(--rule) var(--hand); color: #75705f; }
 .stack-lg, .setup { gap: var(--rule) 48px; }
@@ -98,6 +104,12 @@ body, .top { background: var(--pad-paper); }
 .stages { gap: 0 20px; font: 22px/var(--rule) var(--hand); }
 .stages li { margin-right: 24px; }
 .stages li::marker, .stages .done::marker { color: var(--pad-accent); }
+.time-left { min-height: calc(var(--rule) * 2); font: 22px/var(--rule) var(--hand); color: #6b6658; }
+.popout-open { height: auto; padding: 0; border: 0; background: none; font: 19px var(--hand); color: var(--pad-accent); text-decoration: underline; cursor: var(--pen-tap); }
+.sidehead .popout-open { float: right; }
+.actions .popout-open { align-self: center; }
+.time-left.drawn span { visibility: hidden; }
+.meeting.failed span { color: var(--pad-accent); }
 .prose { font: 24px/var(--rule) var(--hand); color: var(--pad-ink); }
 .prose, .content h1 { text-shadow: 0 0 .4px rgba(60, 60, 60, .5); }
 .prose h1, .prose h2, .prose h3, .prose h4 { position: relative; top: -1px; margin: var(--rule) 0 0; font: 700 27px/var(--rule) var(--hand); text-decoration: underline 2px; text-underline-offset: 5px; }
@@ -113,18 +125,9 @@ body, .top { background: var(--pad-paper); }
 #saved { font: 21px/var(--rule) var(--hand); color: #6b6658; }
 .history li { line-height: var(--rule); }
 
-/* handwriting.js: words stay hidden until the pencil gets to them, and are pale for a moment. */
-.hw-word { white-space: nowrap; }
-.prose code .hw-word, .prose code.hw-word { white-space: normal; overflow-wrap: anywhere; }
-.hw-unwritten { visibility: hidden; }
-.hw-writing li:not(.hw-on)::marker { color: transparent; text-shadow: none; }
-.hw-writing :is(h1, h2, h3, h4):not(.hw-on) { text-decoration-color: transparent; }
-.hw-fresh { animation: hw-pencil .35s ease-out; }
-@keyframes hw-pencil { from { opacity: .15; filter: blur(.6px); } }
-.pencil { position: absolute; left: 0; top: 0; z-index: 5; width: 0; height: 0; pointer-events: none; transition: transform 70ms linear; }
-.pencil[hidden] { display: none; }
-.pencil > svg { position: absolute; left: -1px; top: -10px; transform-origin: 1px 50%; transform: rotate(28deg); filter: drop-shadow(10px 14px 5px rgba(40, 30, 10, .28)); transition: transform .18s ease-out; }
-.pencil.lifted > svg { transform: translate(6px, -8px) rotate(24deg) scale(1.03); filter: drop-shadow(18px 24px 8px rgba(40, 30, 10, .2)); }
+/* handwriting.js: new notes show at once in wet ink, which dries to the pad's own down the screen. */
+.ink-wet, .ink-wet * { animation: ink-dry 1.3s ease-out var(--wet-at, 0ms) both; }
+@keyframes ink-dry { from { color: #1e3a8a; text-shadow: 0 0 .7px rgba(30, 58, 138, .6); } }
 
 
 /* Signing in to slivingdoc is the first step: a sticky note taped on the pad until it is done
@@ -142,15 +145,590 @@ body, .top { background: var(--pad-paper); }
 #notebook-card .inline { height: auto; padding: 0; font: 20px var(--hand); color: #5a4630; }
 #notebook-card input { background: rgba(255, 255, 255, .55); }
 .notebook #connect { margin-top: 8px; padding: 6px 12px; border: 1.5px dashed var(--pad-accent); border-radius: 3px; font: 700 19px var(--hand); color: var(--pad-accent); text-decoration: none; }
+/* The project's source, a quiet line at the foot of the sidebar. */
+/* Penelope as an app beside the native ones (install.js): the browser's own install prompt. */
+.notebook .install { align-self: flex-start; height: auto; margin-top: 10px; padding: 0; border: 0; background: none; font: 700 18px var(--hand); color: var(--pad-accent); text-decoration: underline; cursor: var(--pen-tap); }
+.notebook .install:hover { text-decoration-style: wavy; }
+.notebook .source-link { align-self: flex-start; margin-top: 10px; font: 17px var(--hand); color: #8a8576; text-decoration: none; }
+.notebook .source-link:hover { color: var(--pad-accent); text-decoration: underline; }
+
+/* The user's own pen on the desk: a click picks it up to doodle on the pad, and puts it back (sketch.js). */
+.desk-pen {
+  display: flex; align-items: center; gap: 4px; align-self: flex-start; height: auto; margin: auto 0 10px; padding: 6px 4px; border: 0;
+  background: none; font: 19px var(--hand); color: #8a8576; cursor: var(--pen-tap);
+}
+.desk-pen + .notebook { margin-top: 0; }
+.desk-pen svg { filter: drop-shadow(4px 6px 3px rgba(40, 30, 10, .28)); transition: transform .2s ease, opacity .2s ease; }
+.desk-pen:hover svg { transform: rotate(-3deg) translate(2px, -3px); }
+.desk-pen[aria-pressed="true"] svg { opacity: .18; filter: none; }
+.desk-pen[aria-pressed="true"] .desk-pen-say { color: var(--pad-accent); text-decoration: underline 1.5px; text-underline-offset: 4px; }
+/* The user's ink: above the cards, and the drawing surface only while the pen is held. */
+.sketch { position: absolute; left: 0; top: 0; z-index: 7; pointer-events: none; overflow: visible; }
+.sketch path { fill: none; stroke: #1f3a8a; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; opacity: .9; }
+body.doodling .sketch { pointer-events: auto; touch-action: none; cursor: var(--pen-image); }
 
 /* After the recording, the pencil doodles on the empty pad: doodles.js. */
 .doodles { position: absolute; left: 0; top: 0; z-index: 3; pointer-events: none; overflow: visible; }
-.doodles path { fill: none; stroke: #5b5d63; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; opacity: .85; }
+.doodles path { fill: none; stroke: #34508f; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; opacity: .85; }
 .doodles path.pen { stroke: rgba(192, 57, 43, .75); stroke-width: 2; }
-.doodles text { font: 22px var(--hand); fill: #4f5157; }
+.doodles text { font: 22px var(--hand); fill: #34508f; }
 .doodles g, .doodles { transition: opacity .6s ease-out; }
 .doodles .gone, .doodles.gone { opacity: 0; }
 .doodle-pencil > g { filter: drop-shadow(7px 10px 3.5px rgba(40, 30, 10, .28)); }
 
 /* The notebook's history is what the agent's tools print; the saved path says enough. */
 #history, #history-list, #saved .history-sep { display: none; }
+
+/* arrival.js: a pen writes a checklist of what gets ready on the pad, a box and its words a line,
+   ticks each line off as its piece is in and doodles while it waits, then rubs it all out. The
+   page stays off the pad until then, the sidebar until the notes are listed, and the header's
+   chips until the page comes, so nothing snaps into place as the machine boots. */
+#app:not(.arrived) :is(.setup, #status, .content > [data-view], #desk-pen, #loadbar) { display: none !important; }
+#app:not(.with-notes) :is(#meetings, #empty, .notebook, .sidebar > #new) { display: none !important; }
+body:not(.app-arrived) .top .chips { visibility: hidden; }
+.loading { position: absolute; left: 110px; top: calc(var(--rule) * 3); right: 56px; bottom: 0; z-index: 4; margin: 0; padding: 0; list-style: none; font: 26px/var(--rule) var(--hand); color: var(--pad-ink); pointer-events: none; overflow: hidden; }
+.loading li { position: relative; width: max-content; height: var(--rule); padding-left: 40px; text-shadow: 0 0 .4px rgba(60, 60, 60, .5); }
+.loading .ink { display: inline-block; }
+.loader-ink { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.loader-ink path { fill: none; stroke: #27324f; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; transition: opacity .4s; }
+.loader-ink path.tick { stroke: var(--pad-accent); stroke-width: 2.8; }
+.loader-ink path.doodle { stroke: #5b5d63; stroke-width: 1.7; opacity: .85; }
+.loader-ink path.gone { opacity: 0; }
+/* The notes are not listed yet: the load bar says so, not "No meetings". */
+#app:not([data-phase=ready]) #empty { display: none; }
+/* loadbar.js: what is still loading, as a pencilled box that fills, and what waits for it. */
+.loadbar { display: flex; flex-direction: column; gap: 2px; padding: 10px 0 4px; font: 20px/1.15 var(--hand); color: var(--pad-ink); }
+.loadbar-text { font-weight: 700; font-size: 22px; }
+.loadbar svg { overflow: visible; margin: 4px 0; }
+.loadbar path { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.loadbar-box { stroke: #4a4c52; stroke-width: 1.6; }
+.loadbar-shade { stroke: var(--pad-accent); stroke-width: 1.5; opacity: .75; }
+.loadbar-detail { font-size: 18px; color: #75705f; overflow-wrap: anywhere; }
+.loadbar.failed .loadbar-text { color: var(--pad-accent); }
+[data-needs].getting-ready { opacity: .5; }
+[data-needs].getting-ready::after { content: " …"; }
+.loadbar button { align-self: flex-start; padding: 0; border: 0; background: none; font: 700 20px var(--hand); color: var(--pad-accent); text-decoration: underline 1.5px; text-underline-offset: 4px; cursor: var(--pen-tap); }
+
+/* pen.js: the pens that write, over the whole page. */
+.pens { position: fixed; inset: 0; z-index: 50; overflow: hidden; pointer-events: none; }
+.pen { position: absolute; left: 0; top: 0; overflow: visible; }
+.pen > g { filter: drop-shadow(8px 12px 4px rgba(40, 30, 10, .28)); }
+.pen.lifted > g { filter: drop-shadow(18px 26px 8px rgba(40, 30, 10, .2)); }
+
+/* pageturn.js: the sheet as it was lifts toward the binding, its free end trailing and casting a
+   shadow, until it is edge on (85deg, seen from 300px below the binding). */
+.page-turn { --turn: .62s; --ear: 70px; position: fixed; z-index: 20; height: var(--tall); pointer-events: none; perspective: 3000px; perspective-origin: 50% calc(var(--hinge) + 300px); }
+.turn-leaf { position: absolute; inset: 0; transform-origin: 50% var(--hinge); transform-style: preserve-3d; animation: turn-up var(--turn) cubic-bezier(.35, .1, .35, 1) both; }
+.turn-leaf .turn-leaf { transform-origin: 50% var(--bend); animation: turn-bend var(--turn) ease-in-out both; }
+.turn-leaf .turn-leaf::before {
+  content: ""; position: absolute; left: 24px; right: 24px; top: var(--bend); height: calc(var(--foot) - var(--bend));
+  box-shadow: 0 26px 34px -14px rgba(60, 45, 15, .5); opacity: 0; animation: turn-light var(--turn) ease-out both;
+}
+.turn-face { position: absolute; left: 0; right: 0; top: var(--hinge); height: calc(var(--bend) - var(--hinge)); overflow: hidden; backface-visibility: hidden; }
+.turn-face > .content { height: var(--tall); margin: calc(-1 * var(--hinge)) 0 0; }
+.turn-face *, .turn-face *::before { animation: none !important; }
+.turn-leaf .turn-leaf > .turn-face { top: var(--bend); height: calc(var(--foot) - var(--bend)); clip-path: polygon(0 0, 100% 0, 100% calc(100% - var(--ear)), calc(100% - var(--ear)) 100%, 0 100%); }
+.turn-leaf .turn-leaf > .turn-face > .content { margin-top: calc(-1 * var(--bend)); }
+.turn-face::after { content: ""; position: absolute; inset: 0; z-index: 8; opacity: 0; background: linear-gradient(transparent 50%, rgba(255, 253, 235, .5)); animation: turn-light var(--turn) ease-in both; }
+.turn-leaf .turn-leaf > .turn-face::after { background: linear-gradient(rgba(255, 253, 235, .5), transparent 35%, rgba(90, 70, 25, .28)); }
+@keyframes turn-up { to { transform: rotateX(85deg); } }
+/* Back in the pad: the earlier page comes down over the binding onto a still copy of the one left. */
+.page-under { position: fixed; z-index: 19; height: var(--tall); overflow: hidden; pointer-events: none; }
+.page-under > .content { height: var(--tall); }
+.page-under *, .page-under *::before { animation: none !important; }
+/* Only the whole leaf comes down; its lower half bends as it does going up, played backwards. */
+.page-turn.back > .turn-leaf { animation-name: turn-down; animation-timing-function: cubic-bezier(.65, 0, .65, .9); }
+.page-turn.back .turn-leaf .turn-leaf, .page-turn.back .turn-face::after { animation-direction: reverse; }
+@keyframes turn-down { from { transform: rotateX(85deg); } to { transform: none; } }
+@keyframes turn-bend { 45% { transform: rotateX(-24deg); } }
+@keyframes turn-light { to { opacity: 1; } }
+
+@media (prefers-reduced-motion: no-preference) {
+  .loadbar-clip rect { transition: width .3s linear; }
+
+  .erasing li, .erasing .loader-ink { animation: rub-out .5s ease-in forwards; }
+  .erasing li:nth-of-type(2) { animation-delay: .05s; }
+  .erasing li:nth-of-type(3) { animation-delay: .1s; }
+  .erasing li:nth-of-type(4) { animation-delay: .15s; }
+  .erasing li:nth-of-type(5) { animation-delay: .2s; }
+  .erasing li:nth-of-type(6) { animation-delay: .25s; }
+  .erasing .loader-ink { animation-delay: .25s; }
+  .eraser {
+    position: absolute; left: 0; top: 0; width: 64px; height: 30px; border-radius: 5px;
+    background: linear-gradient(90deg, #f0a3a6 0 52%, #3f6fb5 52% 100%); box-shadow: 0 10px 14px -4px rgba(60, 40, 10, .35), inset 0 -4px 0 rgba(0, 0, 0, .12);
+    animation: erase .9s ease-in-out forwards;
+  }
+
+  /* The pad is put on the desk, and the sticky note on the pad from off it, then taped. They
+     play again whenever the note shows after being hidden. */
+  .content { animation: pad-down .6s cubic-bezier(.2, .8, .2, 1) backwards; }
+  /* --put: arrival.js puts it down after the pieces of the page before it. */
+  #notebook-card { animation: sticky-put .95s cubic-bezier(.25, .75, .3, 1) calc(var(--put, 0ms) + .1s) backwards; }
+  #notebook-card::before { animation: tape-on .28s cubic-bezier(.3, 1.4, .5, 1) calc(var(--put, 0ms) + .95s) backwards; }
+  .sidebar > #new { animation: stamp .4s cubic-bezier(.3, 1.5, .5, 1) backwards; }
+}
+
+@keyframes rub-out {
+  30% { opacity: .75; filter: blur(.5px); transform: translateX(-2px); }
+  60% { opacity: .35; filter: blur(1.2px); transform: translateX(3px); }
+  to { opacity: 0; filter: blur(2px); transform: translateX(0); }
+}
+@keyframes erase {
+  0% { opacity: 0; transform: translate(-30px, -20px) rotate(-24deg); }
+  10% { opacity: 1; transform: translate(0, 0) rotate(-18deg); }
+  25% { transform: translate(var(--far, 380px), 30px) rotate(-14deg); }
+  40% { transform: translate(20px, 70px) rotate(-20deg); }
+  55% { transform: translate(var(--far, 380px), 110px) rotate(-14deg); }
+  70% { transform: translate(30px, 150px) rotate(-20deg); }
+  85% { opacity: 1; transform: translate(var(--far, 380px), 180px) rotate(-12deg); }
+  100% { opacity: 0; transform: translate(calc(var(--far, 380px) + 80px), 120px) rotate(-6deg); }
+}
+@keyframes pad-down { from { opacity: 0; transform: translateY(28px) rotate(.5deg); } }
+@keyframes sticky-put {
+  0% { transform: translate(260px, -110vh) rotate(16deg) scale(1.08); box-shadow: 0 60px 60px -10px rgba(90, 50, 10, .3); }
+  70% { transform: translate(-6px, 10px) rotate(-3.5deg) scale(1.04); box-shadow: 0 30px 40px -10px rgba(90, 50, 10, .35); }
+  85% { transform: translate(2px, -2px) rotate(-.6deg) scale(1); }
+  100% { transform: rotate(-1.2deg); }
+}
+@keyframes tape-on { from { opacity: 0; transform: translateY(-14px) rotate(-8deg) scale(1.4); } }
+@keyframes stamp { from { opacity: 0; transform: scale(1.35) rotate(-3deg); } }
+
+/* The checklist before a recording: a green post-it smacked onto the pad. Each line still to do
+   is a link in red pencil that asks the browser; Start recording waits for the mic and the share. */
+.precheck {
+  position: relative; box-sizing: border-box; align-self: flex-start; width: min(520px, 100%); margin: 8px 0 var(--rule); padding: 20px 26px 22px;
+  font: 22px/var(--rule) var(--hand); color: #2f3b24; transform: rotate(-1deg);
+  background: linear-gradient(170deg, #e2f5c4, #d3ecaa 60%, #c4e293);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .12), 8px 12px 14px -8px rgba(40, 50, 10, .45);
+}
+/* No tape: a post-it holds by its glue strip, a touch darker along the top. */
+.precheck::before { content: ""; position: absolute; inset: 0 0 auto; height: 34px; background: linear-gradient(rgba(90, 120, 40, .1), transparent); pointer-events: none; }
+.content .precheck h2 { margin: 0 0 4px; font: 700 28px/var(--rule) var(--hand); color: #2f3b24; }
+.precheck .ticks { margin: 0; padding: 0; list-style: none; }
+.content .precheck .tick { display: block; height: auto; min-height: var(--rule); padding: 0; border: 0; background: none; font: 22px/var(--rule) var(--hand); color: #2f3b24; text-align: left; cursor: var(--pen); }
+.precheck .tick::before { content: "☐ "; color: #6a7a52; }
+.precheck .tick.allowed::before { content: "☑ "; color: var(--pad-accent); }
+.content .precheck .tick:not(:disabled) { cursor: var(--pen-tap); color: var(--pad-accent); font-weight: 700; text-decoration: underline 1.5px; text-underline-offset: 4px; }
+.content .precheck .tick:not(:disabled):hover { text-decoration-style: wavy; }
+.precheck .tick:disabled { opacity: 1; }
+.precheck .tick.alarm { color: var(--pad-accent); }
+.precheck .hint { margin: 6px 0 0; font-size: 19px; line-height: 26px; color: #4a5a3a; }
+/* A recorded share that stays silent: an orange post-it asking about it. */
+.rec-quiet {
+  box-sizing: border-box; align-self: flex-start; width: min(560px, 100%); margin: 0; padding: 16px 22px;
+  font: 21px/28px var(--hand); color: #4a2e10; transform: rotate(.6deg);
+  background: linear-gradient(170deg, #ffe0b0, #ffcf8a 60%, #ffc070);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .12), 8px 12px 14px -8px rgba(80, 40, 0, .45);
+}
+.rec-quiet strong { display: block; font-size: 26px; color: var(--pad-accent); }
+.precheck .row { display: flex; flex-wrap: wrap; gap: 4px 18px; margin-top: 6px; }
+.content .precheck .inline { height: auto; padding: 0; border: 0; background: none; font: 19px var(--hand); color: #4a5a3a; text-decoration: underline; cursor: var(--pen-tap); }
+.precheck .level { height: 14px; margin: 4px 0; border: 2px solid #3d4a2e; border-radius: 4px 9px 5px 8px / 8px 4px 9px 5px; overflow: hidden; }
+.precheck .level span { display: block; height: 100%; width: calc(var(--level, 0) * 100%); background: repeating-linear-gradient(-55deg, var(--pad-accent) 0 3px, transparent 3px 6px); transition: width .08s linear; }
+.content #record-form > .primary:disabled { opacity: .35; cursor: not-allowed; }
+@media (prefers-reduced-motion: no-preference) {
+  #app.arrived .precheck { animation: note-smack .38s cubic-bezier(.2, .9, .3, 1) backwards; }
+}
+/* Slapped down by a palm: in from above the pad, flattened on impact, settling with a wobble. */
+@keyframes note-smack {
+  0% { opacity: 0; transform: translateY(-40px) rotate(-6deg) scale(1.25); box-shadow: 0 50px 50px -10px rgba(40, 60, 10, .3); }
+  45% { opacity: 1; transform: rotate(-2.2deg) scale(.97, .95); box-shadow: 0 2px 4px rgba(40, 60, 10, .4); }
+  70% { transform: rotate(-.6deg) scale(1.01); }
+  100% { transform: rotate(-1deg); }
+}
+
+/* Proofreading (proofread.js): red pen strikes the agent's pencil, blue pen writes the fix. */
+.proof-hint { margin: 0 0 var(--rule); font: 19px/var(--rule) var(--hand); color: #75705f; }
+.utt, .utt-added { --hang: 74px; position: relative; padding-left: var(--hang); text-indent: calc(-1 * var(--hang)); }
+.utt { cursor: var(--pen-image); }
+.utt-added ins { text-indent: 0; }
+#transcript.untimed :is(.utt, .utt-added) { padding-left: 0; text-indent: 0; }
+.utt:focus-visible { outline: 2px dashed rgba(192, 57, 43, .55); outline-offset: 1px; }
+.content .utt-time, .content .utt-who {
+  display: inline; height: auto; padding: 0; border: 0; background: none; text-indent: 0; line-height: var(--rule);
+}
+.content .utt-time { display: inline-block; width: var(--hang); font: 17px/var(--rule) var(--hand); color: #8a8576; text-align: left; cursor: var(--pen); }
+#transcript.playable .utt-time { cursor: var(--pen-tap); }
+#transcript.playable .utt-time::before { content: "▸ "; color: var(--pad-accent); }
+#transcript.playable .utt-time:hover { color: var(--pad-accent); }
+.content .utt-who { font: 700 22px/var(--rule) var(--hand); color: var(--pad-ink); cursor: var(--pen-tap); }
+.utt-added .utt-time { display: inline-block; width: var(--hang); font-size: 17px; }
+.utt-added .utt-who { font-weight: 700; }
+.utt-who:hover { text-decoration: underline wavy 1.5px var(--pad-accent); text-underline-offset: 4px; }
+/* Who is speaking: a line of each speaker's, which plays from the recording kept here to hear who it is. */
+.content .speaker { --hang: 74px; display: grid; grid-template-columns: var(--hang) minmax(0, 1fr); align-items: baseline; }
+.content .speaker label { grid-column: 2; font: 22px/var(--rule) var(--hand); }
+.content .speaker label strong { font-weight: 700; color: var(--pad-ink); }
+.content .speaker q { color: #6b6658; overflow-wrap: anywhere; }
+.content .speaker input { grid-column: 2; }
+.content .speaker-play { grid-column: 1; height: auto; padding: 0; border: 0; background: none; font: 17px/var(--rule) var(--hand); color: #8a8576; text-align: left; visibility: hidden; }
+.content #speakers.playable .speaker-play { visibility: visible; cursor: var(--pen-tap); }
+.content #speakers.playable .speaker-play::before { content: "▸ "; color: var(--pad-accent); }
+.content #speakers.playable .speaker-play:hover { color: var(--pad-accent); }
+.content .speaker-play.playing { color: var(--pad-accent); background: linear-gradient(transparent 18%, rgba(255, 140, 190, .35) 18% 88%, transparent 88%); }
+/* A name the library gave, or a voice the agent learned: who, from what, and a word to keep or correct it. */
+.content .speaker-who { grid-column: 2; font: 22px/var(--rule) var(--hand); }
+.content .speaker-who strong { font-weight: 700; color: var(--pad-ink); }
+.content .speaker-source, .content .speaker-learned { font-size: 18px; color: #75705f; }
+.content .speaker-source[data-status="unconfirmed"]::after { content: " ?"; color: var(--pad-accent); }
+.content .speaker-learned { color: #6b3a55; }
+.content :is(.speaker-keep, .speaker-not) { height: auto; padding: 0; border: 0; background: none; font: 19px/var(--rule) var(--hand); text-decoration: underline; cursor: var(--pen-tap); }
+.content .speaker-keep { color: #2f6b2f; font-weight: 700; }
+.content .speaker-not { color: #8a5a14; }
+.content .speaker input[data-not] { grid-column: 2; }
+.content #speakers-said { font: 19px/var(--rule) var(--hand); color: #8a5a14; }
+/* While the names are written (review.js show.6): the rows grey out and the line says the step, breathing. */
+.content #speakers[aria-busy="true"] :is(#speaker-rows, .remember) { opacity: .5; transition: opacity .3s; }
+.content #speakers-said[data-naming] { color: var(--pad-ink); animation: naming-breathe 1.6s ease-in-out infinite; }
+@keyframes naming-breathe { 50% { opacity: .45; } }
+@media (prefers-reduced-motion: reduce) { .content #speakers-said[data-naming] { animation: none; } }
+.content #speakers .remember { display: flex; gap: 8px; align-items: center; font: 20px/var(--rule) var(--hand); }
+/* New recording's people row: the library's people, ticked when they are in the meeting. */
+.content .people { display: flex; flex-wrap: wrap; gap: 0 18px; margin: 0; padding: 0; border: 0; }
+.content .people legend { padding: 0; font: 20px/var(--rule) var(--hand); color: #75705f; }
+.content .people .person { display: flex; gap: 6px; align-items: center; font: 22px/var(--rule) var(--hand); cursor: var(--pen-tap); }
+/* The line playing, run over with a highlighter. */
+.utt.playing { background: linear-gradient(transparent 18%, rgba(255, 140, 190, .35) 18% 88%, transparent 88%) 0 0 / 100% var(--rule); }
+.prose del { color: #8a8576; text-decoration: line-through 2px rgba(192, 57, 43, .85); }
+.prose ins { color: #1f3a8a; text-decoration: none; }
+.prose del + ins { margin-left: .25em; }
+.utt.removed .utt-time, .utt.removed .utt-who { opacity: .5; }
+.content .utt-edit {
+  display: block; width: 100%; height: var(--rule); margin: 0; padding: 0 6px; text-indent: 0; overflow: hidden;
+  font: 22px/var(--rule) var(--hand); color: #1f3a8a; background: rgba(255, 255, 255, .6);
+}
+/* On a phone the words wrap under the time and the speaker, at the pad's full width. */
+@media (max-width: 600px) {
+  .utt, .utt-added { padding-left: 0; text-indent: 0; }
+  .content .utt-time { width: auto; margin-right: 10px; }
+  .who-menu { left: 0; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .settling del { animation: rub-out .5s ease-in forwards; }
+  .settling ins { transition: color .5s; color: inherit; }
+}
+
+/* Who said a line: a small pink post-it of the meeting's speakers. */
+.who-menu {
+  position: absolute; z-index: 6; left: var(--hang); top: var(--rule); display: flex; flex-direction: column; min-width: 190px;
+  padding: 8px 16px 10px; text-indent: 0; transform: rotate(-1deg); font: 22px/var(--rule) var(--hand);
+  background: linear-gradient(170deg, #ffdcec, #ffcbe2 60%, #f8bcd6); box-shadow: 0 1px 2px rgba(0, 0, 0, .12), 8px 12px 14px -8px rgba(80, 20, 50, .4);
+}
+.content .who-menu button {
+  height: auto; padding: 0; border: 0; background: none; text-align: left; font: 22px/var(--rule) var(--hand); color: var(--pad-accent);
+  text-decoration: underline 1.5px; text-underline-offset: 4px; cursor: var(--pen-tap);
+}
+.content .who-menu button:hover, .content .who-menu button:focus-visible { text-decoration-style: wavy; outline: 0; }
+.content .who-menu input { height: var(--rule); background: rgba(255, 255, 255, .6); }
+
+/* The unsaved corrections: a post-it stuck to the bottom of the view. */
+.fixes {
+  position: sticky; bottom: 18px; z-index: 7; align-self: flex-end; box-sizing: border-box; width: min(340px, 100%); margin: 0;
+  padding: 12px 22px 14px; font: 22px/var(--rule) var(--hand); color: #4a2338; transform: rotate(-1deg);
+  background: linear-gradient(170deg, #ffdcec, #ffcbe2 60%, #f8bcd6);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .12), 8px 12px 14px -8px rgba(80, 20, 50, .45);
+}
+.fixes::before { content: ""; position: absolute; inset: 0 0 auto; height: 34px; background: linear-gradient(rgba(120, 40, 80, .08), transparent); pointer-events: none; }
+.content .fixes h2 { margin: 0; font: 700 28px/var(--rule) var(--hand); color: #4a2338; }
+.fixes .hint { margin: 0; font-size: 19px; line-height: 26px; color: #6b3a55; }
+.fixes .hint:empty { display: none; }
+.fixes .row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; margin-top: 8px; }
+.content .fixes .inline { height: auto; padding: 0; border: 0; background: none; font: 19px var(--hand); color: #6b3a55; text-decoration: underline; cursor: var(--pen-tap); }
+.fix-offer { margin: 0 0 12px; padding-bottom: 10px; border-bottom: 1.5px dashed rgba(120, 40, 80, .3); }
+.offer-what { margin: 0; font: 700 24px/var(--rule) var(--hand); color: #1f3a8a; }
+@media (prefers-reduced-motion: no-preference) {
+  .fixes:not([hidden]) { animation: note-smack .38s cubic-bezier(.2, .9, .3, 1) backwards; }
+  .fixes.nudge { animation: note-wiggle .45s ease-in-out; }
+}
+@keyframes note-wiggle {
+  25% { transform: rotate(-2.5deg) translateX(-4px); }
+  50% { transform: rotate(3deg) translateX(4px); }
+  75% { transform: rotate(-.5deg); }
+}
+
+/* The recording (player.js): its wave sketched in pencil, inked over in red pen as it plays. Three
+   rules tall: the play ring, the wave and the time on two, the links on the third. */
+.tape-row { display: flex; align-items: center; gap: 0 14px; height: calc(var(--rule) * 2); }
+.content .tape-play { flex: none; width: 56px; height: 56px; padding: 0; border: 0; background: none; line-height: 0; color: var(--pad-accent); cursor: var(--pen-tap); }
+.tape-play svg { overflow: visible; }
+.tape-ring { fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; }
+.tape-start { fill: currentColor; stroke: currentColor; stroke-width: 2; stroke-linejoin: round; }
+.tape-pause { fill: none; stroke: currentColor; stroke-width: 5; stroke-linecap: round; }
+.tape .tape-pause, .tape.playing .tape-start { display: none; }
+.tape.playing .tape-pause { display: inline; }
+.tape-play:focus-visible { outline: 2px dashed rgba(192, 57, 43, .7); outline-offset: 1px; border-radius: 50%; }
+.tape-track { position: relative; flex: 1 1 auto; min-width: 0; height: 100%; }
+.tape-wave { display: block; width: 100%; height: 100%; overflow: visible; }
+.tape-wave path, .tape-head { fill: none; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.tape-pencil { stroke: #6b6d73; stroke-width: 1.7; opacity: .7; }
+.tape-ink { stroke: var(--pad-accent); stroke-width: 2.2; }
+.tape-head { stroke: #8e2a1f; stroke-width: 2; }
+.tape-head:not(.moved) { opacity: 0; }
+.content .tape-seek { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0; opacity: 0; cursor: var(--pen-tap); appearance: none; }
+.tape-seek::-webkit-slider-thumb { appearance: none; width: 1px; height: 64px; }
+.tape-seek::-moz-range-thumb { width: 1px; height: 64px; border: 0; }
+.tape-track:has(.tape-seek:focus-visible) { outline: 2px dashed rgba(192, 57, 43, .55); outline-offset: 2px; }
+.tape-time { flex: none; align-self: flex-end; min-width: 6.4em; font: 22px/var(--rule) var(--hand); color: #6b6658; white-space: nowrap; }
+.tape-at { font-weight: 700; color: var(--pad-ink); }
+.tape-links { display: flex; flex-wrap: wrap; gap: 0 28px; padding-left: 70px; }
+.content .tape-link { height: auto; padding: 0; border: 0; background: none; font: 700 21px/var(--rule) var(--hand); color: var(--pad-accent); text-decoration: underline 1.5px; text-underline-offset: 4px; cursor: var(--pen-tap); }
+.content .tape-link:hover { text-decoration-style: wavy; }
+.tape-link:focus-visible { outline: 2px dashed rgba(192, 57, 43, .55); outline-offset: 2px; }
+#recording-download::before { content: "↓ "; }
+/* While the agent writes them anew, the notes it replaces fade out of reach. */
+.cards.replacing { opacity: .35; transition: opacity .4s; }
+/* Transcribing again asks first, on an orange post-it. */
+.again-note {
+  box-sizing: border-box; align-self: flex-start; width: min(540px, 100%); margin: 0; padding: 16px 22px 18px;
+  font: 21px/28px var(--hand); color: #4a2e10; transform: rotate(-.8deg);
+  background: linear-gradient(170deg, #ffe0b0, #ffcf8a 60%, #ffc070);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .12), 8px 12px 14px -8px rgba(80, 40, 0, .45);
+}
+.content .again-note h2 { margin: 0 0 4px; font: 700 27px/var(--rule) var(--hand); color: var(--pad-accent); }
+.again-note .row { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 10px; }
+.content .again-note .inline { height: auto; padding: 0; border: 0; background: none; font: 20px var(--hand); color: #5a3a14; text-decoration: underline; cursor: var(--pen-tap); }
+@media (prefers-reduced-motion: no-preference) {
+  .tape-play svg { transition: transform .2s ease; }
+  .tape-play:hover svg { transform: rotate(-8deg); }
+  .tape-play:active svg { transform: rotate(-8deg) scale(.94); }
+  .again-note:not([hidden]) { animation: note-smack .38s cubic-bezier(.2, .9, .3, 1) backwards; }
+}
+/* A newer deploy of the site, on a blue post-it stuck below the header (update.js). */
+.update-note {
+  position: fixed; top: 84px; right: 28px; z-index: 35; box-sizing: border-box; width: min(320px, calc(100vw - 32px)); margin: 0;
+  padding: 12px 20px 14px; font: 20px/26px var(--hand); color: #1f3550; transform: rotate(-1deg);
+  background: linear-gradient(170deg, #dcefff, #c8e4fc 60%, #b5d8f6);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .12), 8px 12px 14px -8px rgba(20, 50, 90, .45);
+}
+.update-note[hidden] { display: none; }
+.update-note h2 { margin: 0 0 2px; font: 700 25px/30px var(--hand); color: var(--pad-accent); }
+.update-note p { margin: 0; }
+.update-note .row { display: flex; flex-wrap: wrap; gap: 6px 22px; margin-top: 8px; }
+.update-note .inline { height: auto; padding: 0; border: 0; background: none; font: 21px var(--hand); color: #1f3550; text-decoration: underline; cursor: var(--pen-tap); }
+.update-note #update-reload { font-weight: 700; color: var(--pad-accent); }
+.update-note .inline:hover { text-decoration-style: wavy; }
+.update-note .inline:focus-visible { outline: 2px dashed rgba(192, 57, 43, .55); outline-offset: 2px; }
+@media (prefers-reduced-motion: no-preference) {
+  .update-note:not([hidden]) { animation: note-smack .38s cubic-bezier(.2, .9, .3, 1) backwards; }
+}
+@media (max-width: 600px) {
+  .update-note { top: auto; right: 16px; bottom: 96px; left: 16px; width: auto; }
+}
+/* On a phone the time goes under the wave, and the links under it, each on its own rule. */
+@media (max-width: 600px) {
+  .tape-row { flex-wrap: wrap; height: auto; }
+  .tape-track { flex-basis: calc(100% - 70px); height: calc(var(--rule) * 2); }
+  .tape-time { margin-left: 70px; }
+  .tape-links { flex-direction: column; align-items: flex-start; padding-left: 0; }
+}
+
+/* Penelope, the red pen (penelope.js): she stands at the bottom right of the desk and talks in a bubble. */
+.penelope { position: fixed; right: 20px; bottom: 6px; z-index: 40; font: 21px/27px var(--hand); color: var(--pad-ink); }
+.penelope-pen { display: block; padding: 0; border: 0; background: none; cursor: var(--pen-tap); transform-origin: 50% 96%; filter: drop-shadow(6px 8px 4px rgba(40, 30, 10, .28)); }
+.penelope-pen svg { display: block; }
+.penelope-pen:focus-visible { outline: 2px dashed rgba(192, 57, 43, .7); outline-offset: 4px; border-radius: 8px; }
+.penelope-eyes { transform-box: view-box; transform-origin: 24px 79px; }
+.penelope-cheek { transform-box: fill-box; transform-origin: center; }
+.penelope-pupil, .penelope-brow { transition: transform .25s ease; }
+.penelope-brow { transform-box: fill-box; transform-origin: center; }
+.penelope-bow { transform-box: fill-box; transform-origin: 50% 70%; }
+/* penelope.js doze: asleep while the agent loads, eyes shut and a z or two rising. */
+.penelope-lids, .penelope-zs { display: none; }
+.penelope-zs { font: 700 14px var(--hand); fill: #5a1d17; }
+.penelope-zs text { transform-box: fill-box; transform-origin: center; }
+.penelope-zs text + text { font-size: 11px; }
+.penelope.dozing .penelope-eyes { visibility: hidden; }
+.penelope.dozing .penelope-lids, .penelope.dozing .penelope-zs { display: inline; }
+.penelope.open .penelope-pupil { transform: translate(-1.4px, -.8px); }
+.penelope.busy .penelope-pupil { transform: translate(-1.6px, 1.8px); }
+/* Otherwise her eyes follow the user's pen (penelope.js follow). */
+.penelope-pupil { transform: translate(var(--look-x, 0px), var(--look-y, 0px)); }
+.penelope.mood-unsure .penelope-brow-left { transform: translateY(-2.2px) rotate(-10deg); }
+.penelope.mood-sorry .penelope-brow-left { transform: rotate(16deg); }
+.penelope.mood-sorry .penelope-brow-right { transform: rotate(-16deg); }
+
+.penelope-bubble {
+  position: fixed; right: 78px; bottom: 58px; display: flex; flex-direction: column; box-sizing: border-box;
+  width: min(380px, calc(100vw - 100px)); max-height: min(70vh, 560px); padding: 10px 16px 12px;
+  background: #fffdf6; border: 1.5px solid #3d3f44; border-radius: 16px 12px 18px 14px / 14px 18px 12px 16px;
+  box-shadow: 0 2px 0 rgba(0, 0, 0, .05), 10px 16px 28px -10px rgba(60, 45, 15, .45);
+}
+.penelope-bubble { transform-origin: calc(100% + 12px) calc(100% - 40px); }
+.penelope-bubble::after {
+  content: ""; position: absolute; right: -10px; bottom: 34px; width: 18px; height: 18px; background: #fffdf6;
+  border-top: 1.5px solid #3d3f44; border-right: 1.5px solid #3d3f44; transform: rotate(45deg) skew(14deg, 14deg);
+}
+.penelope-head { display: flex; align-items: baseline; gap: 8px; padding-bottom: 4px; border-bottom: 1.5px solid rgba(192, 57, 43, .45); }
+.penelope-head strong { font: 700 26px/32px var(--hand); color: var(--pad-accent); }
+.penelope-role { margin-right: auto; font: 18px var(--hand); color: #8a8576; }
+.penelope-close { padding: 0 4px; border: 0; background: none; color: #8a8576; font: 15px var(--sans); }
+.penelope-log { display: flex; flex-direction: column; gap: 10px; flex: 1 1 auto; min-height: 56px; margin: 8px 0 0; padding: 0 4px 0 0; overflow: auto; list-style: none; }
+.penelope-log > li { max-width: 92%; }
+.penelope-log ol { padding-left: 24px; }
+.penelope-log p, .penelope-log ul, .penelope-log ol { margin: 0 0 6px; }
+.penelope-log li > :last-child { margin-bottom: 0; }
+.penelope-log strong { color: var(--pad-accent); }
+.penelope-log code { font-size: 13px; }
+.penelope-her { align-self: flex-start; color: #4a4c52; }
+.penelope-you { align-self: flex-end; color: #1f3a8a; text-align: right; }
+.penelope-step, .penelope-actions { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; margin: 4px 0 0; font-size: 18px; color: #6b6658; }
+.penelope-link {
+  padding: 0; border: 0; background: none; text-align: left; font: 700 19px/26px var(--hand); color: var(--pad-accent);
+  text-decoration: underline 1.5px; text-underline-offset: 4px; cursor: var(--pen-tap);
+}
+.penelope-link:hover { text-decoration-style: wavy; }
+.penelope-link:disabled { color: #aaa49a; text-decoration: line-through; cursor: var(--pen); opacity: 1; }
+.penelope-doing { margin: 8px 0 0; font: 19px/26px var(--hand); color: #6b6658; }
+.penelope-ideas { display: flex; flex-direction: column; align-items: flex-start; margin: 8px 0 0; }
+.penelope-ideas:empty { display: none; }
+.penelope-form { display: flex; align-items: flex-end; gap: 8px; margin-top: 10px; padding-top: 8px; border-top: 1.5px dashed rgba(61, 63, 68, .25); }
+.penelope-form textarea {
+  flex: 1; min-height: 32px; max-height: 128px; padding: 2px 6px; border: 0; border-bottom: 1.5px solid #93bde4; border-radius: 0;
+  background: transparent; font: 21px/28px var(--hand); color: #1f3a8a; outline: 0; resize: none; overflow-y: hidden;
+}
+.penelope-ask {
+  min-height: 34px; padding: 0 14px; border: 0; border-radius: 3px 8px 4px 9px / 9px 4px 8px 3px;
+  background: #3b3b3b; color: #fff; font: 700 20px var(--hand);
+}
+/* Tools (beta): the MCP servers Penelope may use, attached from a card that opens above the form. */
+.penelope-tools { position: relative; align-self: flex-end; }
+.penelope-tools-button {
+  min-height: 34px; max-width: 120px; padding: 0 8px; overflow: hidden; border: 1.5px dashed rgba(61, 63, 68, .45);
+  border-radius: 8px 4px 9px 3px / 3px 9px 4px 8px; background: none; font: 700 18px/30px var(--hand); color: #4a4c52;
+  white-space: nowrap; text-overflow: ellipsis; cursor: var(--pen-tap);
+}
+.penelope-tools-button.on { border-style: solid; border-color: var(--pad-accent); color: var(--pad-accent); }
+.penelope-tools-menu {
+  position: absolute; left: -4px; bottom: calc(100% + 10px); z-index: 2; box-sizing: border-box; width: min(320px, calc(100vw - 40px));
+  padding: 8px 12px 10px; background: #fffdf6; border: 1.5px solid #3d3f44; border-radius: 12px 16px 10px 18px / 16px 10px 18px 12px;
+  box-shadow: 6px 10px 20px -8px rgba(60, 45, 15, .45);
+}
+.penelope-tools-head { margin: 0 0 6px; font: 700 20px/26px var(--hand); color: #4a4c52; }
+.penelope-beta {
+  margin-left: 4px; padding: 0 5px; border: 1px solid var(--pad-accent); border-radius: 6px; font: 600 11px/16px var(--sans);
+  color: var(--pad-accent); text-transform: uppercase; letter-spacing: .06em; vertical-align: 3px;
+}
+.penelope-tools-list { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.penelope-tool label { display: flex; align-items: baseline; gap: 8px; font: 19px/26px var(--hand); color: #1f3a8a; cursor: var(--pen-tap); }
+.penelope-tool input { accent-color: var(--pad-accent); transform: translateY(2px); }
+.penelope-tool-what { color: #8a8576; font-size: 17px; }
+.penelope-tool-state { margin: 2px 0 0 24px; font: 17px/22px var(--hand); color: #6b6658; }
+.penelope-tool-state .penelope-link { font-size: 17px; line-height: 22px; }
+/* Long unbroken text (patterns, paths, URLs) wraps inside the bubble. */
+.penelope-log, .penelope-doing, .penelope-ideas, .penelope-tool-what, .penelope-tool-state { overflow-wrap: anywhere; }
+.penelope-log pre { white-space: pre-wrap; }
+/* The corrections' post-it makes room for the bubble. */
+.fixes { transition: margin-right .3s ease; }
+body.penelope-open .fixes { margin-right: 400px; }
+@media (max-width: 900px) { body.penelope-open .fixes { margin-right: 0; } }
+@media (max-width: 600px) {
+  .penelope { right: 10px; bottom: 2px; }
+  .penelope-pen svg { width: 36px; height: 129px; }
+  .penelope-bubble { left: 8px; right: 8px; bottom: 140px; width: auto; transform-origin: calc(100% - 30px) calc(100% + 12px); }
+  .penelope-bubble::after { right: 22px; bottom: -11px; transform: rotate(135deg) skew(14deg, 14deg); }
+}
+/* She leans toward her bubble to write, never off the edge of the screen. */
+@media (prefers-reduced-motion: no-preference) {
+  .penelope-pen { animation: penelope-sway 6s ease-in-out infinite; }
+  .penelope-eyes { animation: penelope-blink 6.5s infinite; }
+  .penelope-bow { animation: penelope-bow 6s ease-in-out infinite; }
+  .penelope.dozing .penelope-pen { animation: penelope-sway 10s ease-in-out infinite; }
+  .penelope-zs text { animation: penelope-z 2.6s ease-out infinite; }
+  .penelope-zs text + text { animation-delay: 1.3s; }
+  .penelope.arriving .penelope-pen { animation: penelope-arrive .7s cubic-bezier(.2, 1.3, .4, 1) backwards, penelope-sway 6s ease-in-out .7s infinite; }
+  .penelope.waking .penelope-pen { animation: penelope-wake .6s cubic-bezier(.3, 1.5, .5, 1), penelope-sway 6s ease-in-out .6s infinite; }
+  /* The lean is its own rotate, under the sway, so opening and closing ease rather than snap. */
+  .penelope-pen { transition: rotate .5s cubic-bezier(.3, 1.2, .5, 1); }
+  .penelope.open .penelope-pen { rotate: -7deg; }
+  .penelope.busy .penelope-pen { animation: penelope-write .3s ease-in-out infinite alternate; }
+  .penelope.pouncing .penelope-pen { animation: penelope-pounce .95s cubic-bezier(.3, .7, .3, 1); }
+  /* She chews what she caught: her body bobs down onto her nib with each bite, eyes squeezed happy. */
+  .penelope.chewing .penelope-pen { animation: penelope-chew .15s ease-in-out infinite alternate; }
+  .penelope.chewing .penelope-eyes { animation: none; transform: scaleY(.45); }
+  .penelope.chewing .penelope-cheek { animation: penelope-cheeks .15s ease-in-out infinite alternate; }
+  .penelope-pupil { transition: transform .12s ease-out; }
+  /* The bubble grows out of her, at its tail, and shrinks back into her (penelope.js toggle). */
+  .penelope-bubble { opacity: 0; transform: translate(12px, 8px) scale(.6); transition: opacity .2s ease-in .08s, transform .28s cubic-bezier(.45, 0, .7, .4); }
+  .penelope-bubble.shown { opacity: 1; transform: none; transition: opacity .2s ease-out, transform .4s cubic-bezier(.22, 1.12, .36, 1); }
+  .penelope-doing::after { content: ""; animation: penelope-dots 1.2s steps(4) infinite; }
+}
+@media (prefers-reduced-motion: reduce) { .penelope-doing::after { content: "…"; } }
+@keyframes penelope-sway { 0%, 100% { transform: rotate(-1.5deg); } 50% { transform: rotate(1.5deg); } }
+@keyframes penelope-cheeks { to { transform: scale(1.5); opacity: 1; } }
+@keyframes penelope-chew { from { transform: translateY(0) scaleY(1); } to { transform: translateY(2px) scaleY(.97) rotate(-1deg); } }
+@keyframes penelope-pounce {
+  15% { transform: translateY(10px) rotate(calc(var(--lunge-turn) * -.4)); }
+  45%, 62% { transform: translate(var(--lunge-x), var(--lunge-y)) rotate(var(--lunge-turn)); }
+}
+@keyframes penelope-blink { 0%, 95%, 100% { transform: scaleY(1); } 97% { transform: scaleY(.1); } }
+@keyframes penelope-bow { 0%, 100% { transform: rotate(-3deg); } 50% { transform: rotate(3deg); } }
+@keyframes penelope-write { from { transform: rotate(-5deg) translateX(-2px); } to { transform: rotate(-11deg) translate(-4px, -2px); } }
+@keyframes penelope-arrive { from { transform: translateY(190px) rotate(-12deg); } }
+@keyframes penelope-z { from { opacity: 0; transform: translate(0, 4px) scale(.6); } 30% { opacity: .9; } to { opacity: 0; transform: translate(-3px, -14px) scale(1.15); } }
+@keyframes penelope-wake { 35% { transform: translateY(-18px) scaleY(1.05) rotate(2deg); } 70% { transform: translateY(2px) scaleY(.97); } }
+@keyframes penelope-dots { 0% { content: ""; } 25% { content: "."; } 50% { content: ".."; } 75% { content: "..."; } }
+
+/* pointer.js: a red pencil rings a block of the pad the user is pointed at (no AI provider yet,
+   say), and the ring fades after a while. */
+.pointer-ring { position: absolute; left: 0; top: 0; z-index: 6; overflow: visible; pointer-events: none; transition: opacity .6s ease-out; }
+.pointer-ring path { fill: none; stroke: var(--pad-accent); stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; opacity: .85; }
+.pointer-ring.gone { opacity: 0; }
+/* What Penelope points at reads as her red pen's, not as a web link. */
+.penelope-bubble a[data-point] { color: var(--pad-accent); text-decoration-color: rgba(192, 57, 43, .55); text-underline-offset: 3px; }
+
+/* A narrow screen, a phone or a tablet held upright. The pad has the whole width: the header is
+   one row (the status chips go; the peek is an icon), the sidebar is a drawer behind #menu
+   (drawer.js), the load bar is a strip under the header, and Penelope peeks up from the bottom
+   edge until she talks. */
+.menu, .scrim { display: none; }
+@media (max-width: 900px) {
+  :root { --top-h: 56px; --drawer-w: min(84vw, 320px); }
+  .top { flex-wrap: nowrap; height: var(--top-h); padding: 0 10px 0 4px; gap: 4px; }
+  .menu {
+    display: inline-flex; align-items: center; justify-content: center; flex: none; width: 46px; height: 46px; padding: 0;
+    border: 0; background: none; color: var(--pad-ink); border-radius: 50%;
+  }
+  .menu:focus-visible { outline: 2px dashed rgba(192, 57, 43, .7); outline-offset: -2px; }
+  body:not(.app-arrived) .menu { visibility: hidden; }
+  .brand { flex: 1; min-width: 0; gap: 8px; }
+  .brand-icon { width: 32px; height: 32px; }
+  .brand strong { font-size: 30px; }
+  .chips .chip, #change-key { display: none; }
+  .peek { width: 44px; height: 40px; padding: 0; justify-content: center; gap: 0; font-size: 0; }
+  .peek svg { width: 18px; height: 18px; }
+
+  .sidebar {
+    position: fixed; z-index: 60; top: 0; bottom: 0; left: calc(-1 * var(--drawer-w) - 24px); width: var(--drawer-w);
+    padding: 22px 20px calc(22px + env(safe-area-inset-bottom)); border-right: 1px solid var(--pad-line); border-bottom: 0;
+    overflow-y: auto; overscroll-behavior: contain; visibility: hidden;
+    transition: left .26s cubic-bezier(.4, 0, .6, 1), visibility 0s linear .26s;
+  }
+  body.drawer-open .sidebar { left: 0; visibility: visible; box-shadow: 14px 0 34px -10px rgba(40, 30, 10, .4); transition: left .3s cubic-bezier(.2, .8, .2, 1); }
+  .scrim { display: block; position: fixed; inset: 0; z-index: 55; background: rgba(50, 38, 20, .3); }
+  .meetings { max-height: none; overflow: visible; }
+  .desk-pen { display: none; }
+
+  #loadbar {
+    visibility: visible; position: fixed; z-index: 30; left: 0; right: 0; top: var(--top-h);
+    flex-direction: row; flex-wrap: wrap; align-items: center; gap: 0 12px; padding: 6px 14px 8px;
+    background: var(--pad-paper); border-bottom: 1px solid #e3dcc9;
+  }
+  .loadbar-text { font-size: 20px; }
+  .loadbar svg { width: 120px; height: 10px; margin: 0; }
+  .loadbar-detail { flex-basis: 100%; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .app:has(#loadbar:not([hidden])) .content { margin-top: 84px; }
+
+  .content {
+    --margin-x: 30px;
+    margin: 10px 8px 0 6px; padding: calc(var(--rule) * 3) 18px calc(var(--rule) * 5) 44px; font-size: 22px;
+  }
+  .content h1 { font-size: 46px; }
+  .card > h2, #notebook-card > h2 { font-size: 28px; }
+  .loading { left: 44px; right: 18px; font-size: 23px; }
+  .stack-lg, .setup { gap: var(--rule) 24px; }
+  .setup .card { flex-basis: 100%; }
+}
+@media (max-width: 600px) {
+  .penelope { bottom: -54px; transition: bottom .3s cubic-bezier(.2, .8, .2, 1); }
+  .penelope.open, .penelope.busy, .penelope.pouncing { bottom: 2px; }
+}

@@ -3,6 +3,7 @@
 // the machine's own event log (what the peek shows), scribbled over as many rules as it takes and
 // boxed, circled or crossed out. It runs while the recording bar has the class "waiting" or
 // "summarizing", and rubs everything out when neither is left.
+import { penMarkup } from "./pen.js";
 
 const SVG = "http://www.w3.org/2000/svg";
 const RULE = 32;
@@ -10,13 +11,12 @@ const BASE = 24;
 // A log line wraps onto the next rule past this many letters, as far as this many rules.
 const LINE_CHARS = 46;
 const MAX_LINES = 8;
+// The box the pencil hatches in as the run in view gets done, and the space between its strokes.
+const GAUGE_H = 18;
+const HATCH = 7;
 
-const PENCIL = `<g transform="scale(.6) rotate(28)">
-  <path d="M0 0 L29 -8 L29 8 Z" fill="#e8c592"/><path d="M0 0 L8 -2.2 L8 2.2 Z" fill="#333"/>
-  <rect x="29" y="-8" width="160" height="16" fill="#f5c430"/><rect x="29" y="-8" width="160" height="5" fill="#ffd95a"/>
-  <rect x="29" y="3" width="160" height="5" fill="#d9a514"/><rect x="189" y="-9" width="16" height="18" fill="#b9bcc2"/>
-  <rect x="192" y="-9" width="2" height="18" fill="#8e9298"/><rect x="199" y="-9" width="2" height="18" fill="#8e9298"/>
-  <rect x="205" y="-8" width="22" height="16" rx="3" fill="#e98a8f"/></g>`;
+// The doodles are a blue ballpoint's (pen.js).
+const PENCIL = penMarkup(1);
 
 // An ellipse in four arcs, a little past its start, as a pen goes round a word.
 const ellipse = (cx, cy, rx, ry) => {
@@ -25,6 +25,14 @@ const ellipse = (cx, cy, rx, ry) => {
     ` C${pt(cx + rx, cy + k * ry)} ${pt(cx + k * rx, cy + ry)} ${pt(cx, cy + ry)}` +
     ` C${pt(cx - k * rx, cy + ry)} ${pt(cx - rx, cy + k * ry)} ${pt(cx - rx, cy)}` +
     ` C${pt(cx - rx, cy - k * ry)} ${pt(cx - k * rx, cy - ry - 3)} ${pt(cx + rx * 0.3, cy - ry + 2)}`;
+};
+// A whole ellipse, as one loop.
+const ellipseRing = (cx, cy, rx, ry) => {
+  const k = 0.5523;
+  return `M${pt(cx, cy - ry)} C${pt(cx + k * rx, cy - ry)} ${pt(cx + rx, cy - k * ry)} ${pt(cx + rx, cy)}` +
+    ` C${pt(cx + rx, cy + k * ry)} ${pt(cx + k * rx, cy + ry)} ${pt(cx, cy + ry)}` +
+    ` C${pt(cx - k * rx, cy + ry)} ${pt(cx - rx, cy + k * ry)} ${pt(cx - rx, cy)}` +
+    ` C${pt(cx - rx, cy - k * ry)} ${pt(cx - k * rx, cy - ry)} ${pt(cx, cy - ry)}`;
 };
 // Splits text into lines of at most `width` letters at spaces, breaking a longer word, in at
 // most `max` lines; the last one ends in "…" if the text is longer still.
@@ -54,11 +62,12 @@ export const wrapWords = (text, width, max) => {
 const rand = (lo, hi) => lo + Math.random() * (hi - lo);
 const pick = (list) => list[Math.floor(Math.random() * list.length)];
 const j = (n = 1.5) => rand(-n, n);
-const pt = (x, y) => `${(x + j()).toFixed(1)} ${(y + j()).toFixed(1)}`;
+const pt = (x, y, n = 1.5) => `${(x + j(n)).toFixed(1)} ${(y + j(n)).toFixed(1)}`;
 
 // Shapes in a box from (0, 0) to (w, h): each returns the path data, drawn as one stroke.
-const SHAPES = {
-  coil: { w: 150, h: 26, d: (w, h) => { let s = `M0 ${h}`; for (let t = 0; t <= 7 * Math.PI * 2; t += 0.35) s += ` L${pt(6 + t * 4.6 - 11 * Math.sin(t), h / 2 + 11 * Math.cos(t + Math.PI))}`; return s; } },
+export const SHAPES = {
+  // Round loops: the pen goes round a circle while it moves on slowly.
+  coil: { w: 120, h: 26, d: (w, h) => { let s = ""; for (let t = 0; t <= 7 * Math.PI * 2; t += 0.18) s += `${s ? " L" : "M"}${pt(12 + t * 2.2 - 11 * Math.sin(t), h / 2 + 11 * Math.cos(t + Math.PI), 0.4)}`; return s; } },
   spiral: { w: 60, h: 60, d: () => { let s = "M30 30"; for (let t = 0; t <= 5.5 * Math.PI * 2; t += 0.25) s += ` L${pt(30 + t * 0.85 * Math.cos(t), 30 + t * 0.85 * Math.sin(t), 0.6)}`; return s; } },
   star: { w: 56, h: 54, d: () => { const p = [0, 2, 4, 1, 3, 0].map((i) => [28 + 26 * Math.cos(-Math.PI / 2 + (i * 2 * Math.PI) / 5), 29 + 26 * Math.sin(-Math.PI / 2 + (i * 2 * Math.PI) / 5)]); return `M${p.map(([x, y]) => pt(x, y)).join(" L")}`; } },
   cube: { w: 62, h: 62, d: () => `M${pt(4, 18)} L${pt(42, 18)} L${pt(42, 58)} L${pt(4, 58)} Z M${pt(4, 18)} L${pt(20, 4)} L${pt(58, 4)} L${pt(42, 18)} M${pt(58, 4)} L${pt(58, 44)} L${pt(42, 58)}` },
@@ -74,6 +83,25 @@ const SHAPES = {
   arrow: { w: 120, h: 40, d: () => `M${pt(2, 30)} C${pt(30, 0)} ${pt(60, 44)} ${pt(110, 14)} M${pt(96, 8)} L${pt(112, 13)} L${pt(102, 26)}` },
   flower: { w: 60, h: 60, d: () => { let s = ""; for (let i = 0; i < 6; i++) { const a = (i * Math.PI) / 3; const x = 30 + 16 * Math.cos(a), y = 30 + 16 * Math.sin(a); s += ` M${pt(30, 30, 0.5)} Q${pt(x + 12 * Math.cos(a + 0.9), y + 12 * Math.sin(a + 0.9))} ${pt(30 + 26 * Math.cos(a), 30 + 26 * Math.sin(a))} Q${pt(x + 12 * Math.cos(a - 0.9), y + 12 * Math.sin(a - 0.9))} ${pt(30, 30, 0.5)}`; } return s.trim(); } },
   hash: { w: 44, h: 44, d: () => `M${pt(14, 2)} L${pt(10, 42)} M${pt(32, 2)} L${pt(28, 42)} M${pt(2, 14)} L${pt(42, 14)} M${pt(2, 30)} L${pt(42, 30)}` },
+  heart: { w: 56, h: 50, d: () => `M${pt(28, 48)} C${pt(-6, 26)} ${pt(4, -4)} ${pt(28, 14)} C${pt(52, -4)} ${pt(62, 26)} ${pt(28, 48)}` },
+  smiley: { w: 56, h: 56, d: () => `${ellipseRing(28, 28, 26, 26)} M${pt(19, 20, 0.6)} L${pt(19, 25, 0.6)} M${pt(37, 20, 0.6)} L${pt(37, 25, 0.6)} M${pt(15, 34)} Q${pt(28, 48)} ${pt(41, 34)}` },
+  coffee: { w: 70, h: 64, d: () => `M${pt(8, 24)} L${pt(12, 60)} L${pt(46, 60)} L${pt(50, 24)} Z M${pt(50, 32)} C${pt(66, 30)} ${pt(66, 50)} ${pt(48, 50)}` +
+    ` M${pt(20, 18, 0.6)} C${pt(14, 12, 0.6)} ${pt(26, 8, 0.6)} ${pt(20, 2, 0.6)} M${pt(34, 18, 0.6)} C${pt(28, 12, 0.6)} ${pt(40, 8, 0.6)} ${pt(34, 2, 0.6)}` },
+  house: { w: 60, h: 60, d: () => `M${pt(8, 58)} L${pt(8, 28)} L${pt(30, 6)} L${pt(52, 28)} L${pt(52, 58)} Z M${pt(24, 58)} L${pt(24, 40)} L${pt(36, 40)} L${pt(36, 58)} M${pt(2, 32)} L${pt(30, 4)} L${pt(58, 32)}` },
+  bolt: { w: 40, h: 60, d: () => `M${pt(24, 2)} L${pt(6, 34)} L${pt(20, 34)} L${pt(14, 58)} L${pt(36, 22)} L${pt(22, 22)} L${pt(28, 2)} Z` },
+  tree: { w: 54, h: 66, d: () => `M${pt(27, 4)} L${pt(8, 30)} L${pt(18, 30)} L${pt(4, 50)} L${pt(50, 50)} L${pt(36, 30)} L${pt(46, 30)} Z M${pt(23, 50)} L${pt(23, 64)} L${pt(31, 64)} L${pt(31, 50)}` },
+  note: { w: 48, h: 56, d: () => `M${pt(12, 46)} C${pt(2, 44)} ${pt(4, 56)} ${pt(14, 54)} C${pt(20, 52)} ${pt(18, 46)} ${pt(16, 46)} M${pt(16, 50)} L${pt(16, 8)} L${pt(42, 2)} L${pt(42, 40)} M${pt(38, 38)} C${pt(28, 36)} ${pt(30, 50)} ${pt(40, 46)} C${pt(46, 44)} ${pt(44, 38)} ${pt(42, 38)} M${pt(16, 16)} L${pt(42, 10)}` },
+  cat: { w: 64, h: 56, d: () => `M${pt(8, 24)} L${pt(10, 2)} L${pt(24, 14)} Q${pt(32, 11)} ${pt(40, 14)} L${pt(54, 2)} L${pt(56, 24)} C${pt(62, 52)} ${pt(2, 52)} ${pt(8, 24)} M${pt(22, 28, 0.5)} L${pt(24, 30, 0.5)} M${pt(40, 28, 0.5)} L${pt(42, 30, 0.5)} M${pt(30, 36, 0.5)} L${pt(32, 38, 0.5)} L${pt(34, 36, 0.5)} M${pt(18, 38)} L${pt(-2, 34)} M${pt(18, 41)} L${pt(-2, 44)} M${pt(46, 38)} L${pt(66, 34)} M${pt(46, 41)} L${pt(66, 44)}` },
+  rocket: { w: 48, h: 72, d: () => `M${pt(24, 2)} C${pt(40, 16)} ${pt(38, 40)} ${pt(34, 52)} L${pt(14, 52)} C${pt(10, 40)} ${pt(8, 16)} ${pt(24, 2)} M${pt(14, 40)} L${pt(4, 56)} L${pt(15, 52)} M${pt(34, 40)} L${pt(44, 56)} L${pt(33, 52)} M${pt(30, 24)} A6 6 0 1 1 ${pt(29.9, 23.9, 0)} M${pt(18, 56)} L${pt(16, 68)} M${pt(24, 56)} L${pt(24, 70)} M${pt(30, 56)} L${pt(32, 68)}` },
+  envelope: { w: 70, h: 46, d: () => `M${pt(2, 4)} L${pt(68, 4)} L${pt(68, 44)} L${pt(2, 44)} Z M${pt(2, 4)} L${pt(35, 28)} L${pt(68, 4)}` },
+  // The S everyone drew in the margin as a teenager.
+  coolS: { w: 34, h: 70, d: () => {
+    const q = (x, y) => pt(2 + x * 1.5, 2 + y * 1.32, 0.7);
+    return `M${q(0, 20)} L${q(0, 10)} L${q(10, 0)} L${q(20, 10)} L${q(20, 20)} L${q(15, 25)}` +
+      ` M${q(10, 10)} L${q(10, 20)} L${q(20, 30)} L${q(20, 40)} L${q(10, 50)} L${q(0, 40)} L${q(0, 30)} L${q(5, 25)}` +
+      ` M${q(0, 20)} L${q(10, 30)} L${q(10, 40)}`;
+  } },
+  zigzag: { w: 150, h: 20, d: () => { let s = `M${pt(0, 18)}`; for (let x = 10; x <= 150; x += 10) s += ` L${pt(x, x % 20 ? 2 : 18)}`; return s; } },
 };
 
 // How a scribbled log line gets marked once it is written.
@@ -94,10 +122,11 @@ export class Doodles {
     if (!bar || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     const check = () => {
       const on = (bar.classList.contains("waiting") || bar.classList.contains("summarizing")) && !bar.hidden;
+      // Another run in view (the bar's data-action, minutes.js renderRecording) gets a page of its own.
+      if (this.layer && (!on || (bar.dataset.action ?? "") !== this.action)) this.end();
       if (on && !this.layer) this.begin();
-      if (!on && this.layer) this.end();
     };
-    new MutationObserver(check).observe(bar, { attributes: true, attributeFilter: ["class", "hidden"] });
+    new MutationObserver(check).observe(bar, { attributes: true, attributeFilter: ["class", "hidden", "data-action"] });
     check();
   }
 
@@ -105,19 +134,22 @@ export class Doodles {
     const content = this.doc.querySelector(".content");
     if (!content) return;
     this.content = content;
+    this.action = this.bar.dataset.action ?? "";
     const layer = this.doc.createElementNS(SVG, "svg");
     layer.classList.add("doodles");
     layer.setAttribute("aria-hidden", "true");
     layer.setAttribute("width", content.scrollWidth);
     layer.setAttribute("height", content.scrollHeight);
     this.ink = this.doc.createElementNS(SVG, "g");
+    this.gaugeInk = this.doc.createElementNS(SVG, "g");
     this.pencil = this.doc.createElementNS(SVG, "g");
     this.pencil.classList.add("doodle-pencil");
     this.pencil.innerHTML = PENCIL;
-    layer.append(this.ink, this.pencil);
+    layer.append(this.ink, this.gaugeInk, this.pencil);
     content.append(layer);
     this.layer = layer;
     this.placed = [];
+    this.gauged = null;
     // Log lines from before now are fair game too, but the newest come first.
     this.since = this.model?.log?.length ?? 0;
     this.loop(++this.run);
@@ -125,6 +157,8 @@ export class Doodles {
 
   end() {
     this.run += 1;
+    this.gauged = null;
+    this.doc.querySelector("#time-left")?.classList.remove("drawn");
     const layer = this.layer;
     this.layer = null;
     layer.classList.add("gone");
@@ -161,10 +195,12 @@ export class Doodles {
     return null;
   }
 
+  // A line of what the run in view did, newest first.
   nextLine() {
     const log = this.model?.log ?? [];
-    const fresh = log.slice(this.since).filter((e) => !this.seen.has(e));
-    const recent = log.slice(-80);
+    const mine = (e) => e.action === this.action;
+    const fresh = log.slice(this.since).filter((e) => mine(e) && !this.seen.has(e));
+    const recent = log.filter(mine).slice(-80);
     const unseen = recent.filter((e) => !this.seen.has(e));
     const pool = fresh.length ? fresh : unseen.length ? unseen : recent;
     if (!pool.length) return null;
@@ -178,6 +214,10 @@ export class Doodles {
     await sleep(500);
     let turn = 0;
     while (live()) {
+      if (await this.gauge(live)) {
+        await sleep(rand(150, 350));
+        continue;
+      }
       if (this.bar?.classList.contains("waiting") && turn++ % 3 === 0) {
         await this.swirl(live);
         await sleep(rand(250, 600));
@@ -205,9 +245,80 @@ export class Doodles {
     }
     const g = this.group({ x, y });
     this.swirled = g;
-    let d = "M0 24";
-    for (let t = -Math.PI / 2; t <= 8 * Math.PI * 2; t += 0.3) d += ` L${pt(6 + 5.6 * (t + Math.PI / 2) - 12 * Math.sin(t), 12 - 12 * Math.cos(t), 0.6)}`;
+    let d = "";
+    for (let t = -Math.PI / 2; t <= 8 * Math.PI * 2; t += 0.18) d += `${d ? " L" : "M"}${pt(14 + 2.6 * (t + Math.PI / 2) - 12 * Math.sin(t), 12 - 12 * Math.cos(t), 0.4)}`;
     await this.draw(this.stroke(g, d), 3200, live);
+  }
+
+  // #time-left as a box hatched as far as the run is done, its words beside; true when it drew.
+  async gauge(live) {
+    const row = this.doc.querySelector("#time-left");
+    if (!row || row.hidden) {
+      if (this.gauged) this.rubGauge();
+      return false;
+    }
+    const spot = this.gaugeSpot(row);
+    const g = this.gauged;
+    if (g && (g.job !== row.dataset.job || Math.abs(g.x - spot.x) > 4 || Math.abs(g.y - spot.y) > 4 || g.w !== spot.w)) {
+      this.rubGauge();
+      return true;
+    }
+    if (!g) {
+      const ink = this.group({ x: 0, y: 0 });
+      this.gaugeInk.append(ink);
+      const { x, y, w } = spot;
+      const box = this.stroke(ink, `M${pt(x, y)} L${pt(x + w, y)} L${pt(x + w, y + GAUGE_H)} L${pt(x, y + GAUGE_H)} Z`);
+      this.gauged = { ...spot, job: row.dataset.job, ink, hatched: 0, said: null, words: null };
+      row.classList.add("drawn");
+      await this.draw(box, 900, live);
+      return true;
+    }
+    const due = Math.floor((Math.min(1, Number(row.dataset.progress) || 0) * g.w) / HATCH);
+    if (due > g.hatched) {
+      for (let i = 0; i < 6 && g.hatched < due && live(); i++, g.hatched++) {
+        const x = g.x + g.hatched * HATCH + 3;
+        const stroke = this.stroke(g.ink, `M${pt(x, g.y + GAUGE_H - 2, 0.6)} L${pt(Math.min(x + HATCH + 3, g.x + g.w - 1), g.y + 2, 0.6)}`);
+        await this.draw(stroke, 90, live);
+      }
+      return true;
+    }
+    const said = row.textContent.trim();
+    if (!said || said === g.said) return false;
+    if (g.words) {
+      const old = g.words;
+      old.classList.add("gone");
+      setTimeout(() => old.remove(), 700);
+    }
+    g.said = said;
+    g.words = this.doc.createElementNS(SVG, "g");
+    g.ink.append(g.words);
+    const text = this.doc.createElementNS(SVG, "text");
+    text.textContent = said;
+    g.words.append(text);
+    const width = text.getComputedTextLength();
+    const beside = g.x + g.w + 16 + width <= spot.right;
+    const x = beside ? g.x + g.w + 16 : g.x;
+    const y = beside ? g.y + GAUGE_H - 1 : g.y + GAUGE_H + RULE - 4;
+    text.setAttribute("x", x);
+    text.setAttribute("y", y);
+    await this.write(g.words, text, x, y, width, live);
+    return true;
+  }
+
+  gaugeSpot(row) {
+    const box = this.content.getBoundingClientRect();
+    const at = row.getBoundingClientRect();
+    const x = at.left - box.left + this.content.scrollLeft;
+    const w = Math.max(HATCH * 8, Math.floor(Math.min(280, at.width * 0.5) / HATCH) * HATCH);
+    return { x, y: at.top - box.top + this.content.scrollTop + (RULE - GAUGE_H) / 2, w, right: x + at.width };
+  }
+
+  rubGauge() {
+    const old = this.gauged.ink;
+    this.gauged = null;
+    this.doc.querySelector("#time-left")?.classList.remove("drawn");
+    old.classList.add("gone");
+    setTimeout(() => old.remove(), 700);
   }
 
   async shape(live) {

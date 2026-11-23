@@ -32,4 +32,15 @@ export class Recordings {
   get(key) {
     return this.request("readonly", (store) => store.get(key));
   }
+
+  remove(key) {
+    return this.request("readwrite", (store) => store.delete(key));
+  }
+}
+
+// Bytes as base64, in slices that String.fromCharCode takes as arguments.
+export function toBase64(bytes) {
+  let text = "";
+  for (let at = 0; at < bytes.length; at += 0x8000) text += String.fromCharCode(...bytes.subarray(at, at + 0x8000));
+  return btoa(text);
 }

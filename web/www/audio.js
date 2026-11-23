@@ -1,7 +1,7 @@
 // The page's audio inputs for the machine's /run/audio files: "mic" is the microphone
-// (getUserMedia), "tab" the audio of a tab, window or screen the user shares (getDisplayMedia,
-// which needs a click, so a button asks for it). An input is captured while the machine has its
-// file open. Both run on one AudioContext at 48 kHz, so every open input delivers samples at the
+// (getUserMedia), "tab" the audio of a screen or tab the user shares (getDisplayMedia, which
+// needs a click, so a button asks for it before a recording). An input is captured while the
+// machine has its file open. Both run on one AudioContext at 48 kHz, so every open input delivers samples at the
 // same pace, silence until its stream arrives: ffmpeg mixing the two never waits on one.
 
 const SAMPLE_RATE = 48000;
@@ -34,55 +34,201 @@ class Capture extends AudioWorkletProcessor {
 registerProcessor("capture", Capture);
 `;
 
+// What the browser shared, by the displaySurface of its video.
+const SURFACES = { monitor: "Shared screen", window: "Shared window", browser: "Shared tab" };
+
 export class AudioInputs {
   // `send(name, bytes)` hands captured samples to the machine; `notice(text)` tells the user;
-  // `offer(share)` puts a button up that calls `share` (from a click: the browser asks for
-  // the tab), and `offer(null)` takes it down. `changed()` follows what is captured.
-  constructor(send, notice, offer, changed = () => {}) {
+  // `changed()` follows what is captured and shared; `relist()` follows `listing()`, which the
+  // machine's /run/audio/devices holds. `media` and `Context` are the browser's mediaDevices and
+  // AudioContext, `now` and `sleep` the clock that hearShare waits on.
+  constructor({
+    send, notice, changed = () => {}, relist = () => {}, media = globalThis.navigator?.mediaDevices, Context = globalThis.AudioContext,
+    now = () => Date.now(), sleep = (ms) => new Promise((done) => setTimeout(done, ms)),
+  }) {
+    this.now = now;
+    this.sleep = sleep;
     this.send = send;
     this.notice = notice;
-    this.offer = offer;
     this.changed = changed;
+    this.relist = relist;
+    this.media = media;
+    this.Context = Context;
     this.context = null;
     this.ready = null;
     this.active = new Map();
+    this.mic = null;
     // The browser's other audio inputs by the name of their file: their deviceId and label.
     this.devices = new Map();
+    // The screen or tab shared from the button: its stream and what it is, until it ends.
+    this.shared = null;
   }
 
-  // Asks for the microphone, which lets the browser name its audio inputs, and returns them as
-  // inputs for the machine, `{ name, label }`: "mic", the default, and "devN" for the others,
-  // on Linux the "Monitor of ..." sources of PipeWire and PulseAudio among them.
+  // Asks for the microphone, which lets the browser name its audio inputs: "mic", the default,
+  // and "devN" for the others, on Linux the "Monitor of ..." sources of PipeWire and PulseAudio
+  // among them.
   async discover() {
     let stream;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream = await this.media.getUserMedia({ audio: true });
     } catch (error) {
+      this.mic = null;
       this.notice(`no microphone: ${error.message}`);
-      return [];
+      return;
     }
     const trackLabel = stream.getAudioTracks()[0]?.label ?? "";
     stream.getTracks().forEach((t) => t.stop());
-    const inputs = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === "audioinput");
+    const inputs = (await this.media.enumerateDevices()).filter((d) => d.kind === "audioinput");
     // Chrome lists the default again as "Default - <its label>".
     const preferred = inputs.find((d) => d.deviceId === "default")?.label.replace(/^Default - /, "") ?? trackLabel;
-    const found = [{ name: "mic", label: preferred || "Microphone (browser)" }];
+    this.mic = clean(preferred) || "Microphone (browser)";
     for (const device of inputs) {
       if (["default", "communications", ""].includes(device.deviceId) || device.label === preferred) continue;
-      let name = [...this.devices].find(([, d]) => d.deviceId === device.deviceId)?.[0];
-      if (!name) {
-        name = `dev${this.devices.size + 1}`;
-        this.devices.set(name, { deviceId: device.deviceId, label: device.label });
-      }
-      found.push({ name, label: (device.label || name).replace(/[\t\n]/g, " ") });
+      if ([...this.devices.values()].some((d) => d.deviceId === device.deviceId)) continue;
+      this.devices.set(`dev${this.devices.size + 1}`, { deviceId: device.deviceId, label: clean(device.label) });
     }
-    return found;
+  }
+
+  // The inputs for the machine, `{ name, label }`. The shared one's label is empty until a screen
+  // or tab is shared, and "Monitor of ..." after, so that ffmpeg.sh lists it as a sink only then.
+  listing() {
+    const list = this.mic ? [{ name: "mic", label: this.mic }] : [];
+    for (const [name, device] of this.devices) list.push({ name, label: device.label || name });
+    list.push({ name: "tab", label: this.shared ? `Monitor of ${this.shared.label} (browser)` : "" });
+    return list;
+  }
+
+  // What can be recorded: the microphone's label, and where the computer's audio comes from, with
+  // the source ffmpeg records it as (audio/ffmpeg.sh).
+  access() {
+    const monitor = [...this.devices].find(([, d]) => d.label.startsWith("Monitor of "));
+    const computer = this.shared
+      ? { label: this.shared.label, via: "share", source: "browser-tab.monitor" }
+      : monitor ? { label: monitor[1].label, via: "monitor", source: `browser-${monitor[0]}.monitor` } : null;
+    return { mic: this.mic, computer };
+  }
+
+  // From a click: asks the browser for a screen or tab to share, whose audio stays an input
+  // until the share ends. Answers "shared", "refused" or "no-audio".
+  async share() {
+    let stream;
+    try {
+      stream = await this.media.getDisplayMedia({
+        video: true,
+        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+        preferCurrentTab: false,
+        selfBrowserSurface: "exclude",
+        // Sharing a whole screen then carries what the computer plays, where the browser can:
+        // Chromium on Windows and ChromeOS, and on macOS from Chrome 141 on macOS 14.2. A tab
+        // carries its own audio in every Chromium.
+        systemAudio: "include",
+      });
+    } catch (error) {
+      this.notice(`nothing shared: ${error.message}`);
+      return "refused";
+    }
+    if (stream.getAudioTracks().length === 0) {
+      stream.getTracks().forEach((t) => t.stop());
+      this.notice("the share has no audio: share a tab, or the whole screen with its audio ticked");
+      return "no-audio";
+    }
+    this.unshare();
+    const surface = stream.getVideoTracks()[0]?.getSettings().displaySurface;
+    const shared = { stream, label: SURFACES[surface] ?? "Shared screen or tab" };
+    this.shared = shared;
+    // Stopped from the browser's own bar, or the tab closed.
+    for (const track of stream.getTracks()) track.addEventListener("ended", () => this.shared === shared && this.unshare());
+    this.relist();
+    this.changed();
+    return "shared";
+  }
+
+  // Listens to the share for up to `ms`: "sound" once its loudest sample passes `threshold`,
+  // "silent" if none does, "ended" when the share stops first and "unshared" without one.
+  // `onLevel(peak)` follows what it hears.
+  async hearShare({ ms = 8000, threshold = 0.01, onLevel = () => {} } = {}) {
+    const shared = this.shared;
+    if (!shared) return "unshared";
+    const context = new this.Context();
+    const source = context.createMediaStreamSource(shared.stream);
+    const analyser = context.createAnalyser();
+    analyser.fftSize = 2048;
+    source.connect(analyser);
+    const samples = new Float32Array(analyser.fftSize);
+    const until = this.now() + ms;
+    try {
+      await context.resume();
+      for (;;) {
+        analyser.getFloatTimeDomainData(samples);
+        let peak = 0;
+        for (const v of samples) peak = Math.max(peak, Math.abs(v));
+        onLevel(peak);
+        if (this.shared !== shared) return "ended";
+        if (peak >= threshold) return "sound";
+        if (this.now() >= until) return "silent";
+        await this.sleep(50);
+      }
+    } finally {
+      source.disconnect();
+      await context.close();
+    }
+  }
+
+  // Follows the share with one context while `active()` holds: `onQuiet()` once no sample has
+  // passed `threshold` for `quietMs`, `onSound()` when sound comes back after that. Answers
+  // "done", "ended" when the share stops first, and "unshared" without one.
+  async followShare({ quietMs = 60_000, threshold = 0.01, every = 250, active = () => true, onQuiet, onSound }) {
+    const shared = this.shared;
+    if (!shared) return "unshared";
+    const context = new this.Context();
+    const source = context.createMediaStreamSource(shared.stream);
+    const analyser = context.createAnalyser();
+    analyser.fftSize = 2048;
+    source.connect(analyser);
+    const samples = new Float32Array(analyser.fftSize);
+    let lastSound = this.now();
+    let quiet = false;
+    try {
+      await context.resume();
+      while (active()) {
+        if (this.shared !== shared) return "ended";
+        analyser.getFloatTimeDomainData(samples);
+        let peak = 0;
+        for (const v of samples) peak = Math.max(peak, Math.abs(v));
+        const now = this.now();
+        if (peak >= threshold) {
+          lastSound = now;
+          if (quiet) {
+            quiet = false;
+            onSound();
+          }
+        } else if (!quiet && now - lastSound >= quietMs) {
+          quiet = true;
+          onQuiet();
+        }
+        await this.sleep(every);
+      }
+      return "done";
+    } finally {
+      source.disconnect();
+      await context.close();
+    }
+  }
+
+  // Ends the share, if there is one.
+  unshare() {
+    if (!this.shared) return;
+    const { stream } = this.shared;
+    this.shared = null;
+    stream.getTracks().forEach((t) => t.stop());
+    this.relist();
+    this.changed();
   }
 
   // The label the page gave input `name`.
   label(name) {
     if (name === "mic") return "Mic";
-    if (name === "tab") return "Shared tab";
+    if (name === "tab") return this.shared?.label ?? "Shared screen or tab";
     return this.devices.get(name)?.label ?? name;
   }
 
@@ -103,10 +249,10 @@ export class AudioInputs {
   }
 
   async start(name) {
-    const input = { node: null, source: null, stream: null };
+    const input = { node: null, source: null, stream: null, owned: true };
     this.active.set(name, input);
     if (!this.context) {
-      this.context = new AudioContext({ sampleRate: SAMPLE_RATE });
+      this.context = new this.Context({ sampleRate: SAMPLE_RATE });
       const url = URL.createObjectURL(new Blob([WORKLET], { type: "text/javascript" }));
       this.ready = this.context.audioWorklet.addModule(url);
     }
@@ -118,13 +264,18 @@ export class AudioInputs {
     input.node.port.onmessage = ({ data }) => this.send(name, new Uint8Array(data));
     // Silent: the node only runs while something pulls on it.
     input.node.connect(context.destination);
-    if (name === "mic") this.attach(name, input, navigator.mediaDevices.getUserMedia({ audio: true }));
-    if (name === "tab") this.offerTab(name, input);
+    if (name === "mic") await this.attach(name, input, this.media.getUserMedia({ audio: true }));
+    if (name === "tab") {
+      // The share outlives the recording: it is the button's to end.
+      input.owned = false;
+      if (this.shared) await this.attach(name, input, Promise.resolve(this.shared.stream));
+      else this.notice("no screen or tab is shared; recording silence for it");
+    }
     const device = this.devices.get(name);
     if (device) {
       // A monitor carries what the computer plays: as it is, without a microphone's processing.
       const raw = device.label.startsWith("Monitor of ");
-      this.attach(name, input, navigator.mediaDevices.getUserMedia({
+      await this.attach(name, input, this.media.getUserMedia({
         audio: { deviceId: { exact: device.deviceId }, echoCancellation: !raw, noiseSuppression: !raw, autoGainControl: !raw },
       }));
     }
@@ -136,34 +287,17 @@ export class AudioInputs {
     try {
       stream = await request;
     } catch (error) {
-      this.notice(`no ${name === "tab" ? "shared audio" : this.label(name)}: ${error.message}; recording silence`);
+      this.notice(`no ${this.label(name)}: ${error.message}; recording silence`);
       return;
     }
-    if (this.active.get(name) !== input) return stream.getTracks().forEach((t) => t.stop());
-    if (stream.getAudioTracks().length === 0) {
-      stream.getTracks().forEach((t) => t.stop());
-      return this.notice("the shared tab or screen has no audio; recording silence for it");
+    if (this.active.get(name) !== input) {
+      if (input.owned) stream.getTracks().forEach((t) => t.stop());
+      return;
     }
     input.stream = stream;
     input.source = this.context.createMediaStreamSource(stream);
     input.source.connect(input.node);
     this.changed();
-  }
-
-  // getDisplayMedia needs a click, so a button asks for the tab whose audio to record.
-  offerTab(name, input) {
-    input.offered = true;
-    this.offer(() => {
-      this.offer(null);
-      input.offered = false;
-      this.attach(name, input, navigator.mediaDevices.getDisplayMedia({
-        video: true,
-        audio: { echoCancellation: false, noiseSuppression: false },
-        preferCurrentTab: false,
-        // Sharing a whole screen can then carry what the computer plays, where the browser can.
-        systemAudio: "include",
-      }));
-    });
   }
 
   // The inputs captured now, and whether each has a source yet.
@@ -173,11 +307,76 @@ export class AudioInputs {
 
   stop(name, input) {
     this.active.delete(name);
-    if (input.offered) this.offer(null);
     input.source?.disconnect();
     input.node?.disconnect();
     if (input.node) input.node.port.onmessage = null;
-    input.stream?.getTracks().forEach((t) => t.stop());
+    if (input.owned) input.stream?.getTracks().forEach((t) => t.stop());
     this.changed();
   }
+}
+
+const clean = (label) => label.replace(/[\t\n]/g, " ");
+
+// The OS, browser engine, browser name and major version `navigator` reports.
+export function platformOf({ userAgent = "", userAgentData }) {
+  // A phone first: Android's agent also says Linux, an iPhone's also says Mac OS X.
+  const os = /Android/.test(userAgent) ? "android" : /iPhone|iPad|iPod/.test(userAgent) ? "ios"
+    : /CrOS/.test(userAgent) ? "chromeos"
+    : /Windows/.test(userAgent) ? "windows"
+    : /Macintosh|Mac OS X/.test(userAgent) ? "mac"
+    : /Linux|X11/.test(userAgent) ? "linux" : "other";
+  const major = (pattern) => Number(pattern.exec(userAgent)?.[1]) || undefined;
+  if (/Firefox\//.test(userAgent)) return { os, browser: "firefox", name: "Firefox", version: major(/Firefox\/(\d+)/) };
+  if (/Chrome\/|Chromium\/|Edg\//.test(userAgent)) {
+    // Brave and others name themselves only in the brands.
+    const brand = userAgentData?.brands?.map((b) => b.brand).find((b) => !/Chromium|Not.A.Brand|Google Chrome/i.test(b));
+    const name = /Edg\//.test(userAgent) ? "Edge" : brand?.replace(/^Microsoft /, "") ?? "Chrome";
+    return { os, browser: "chromium", name, version: major(/Chrome\/(\d+)/) };
+  }
+  if (/Safari\//.test(userAgent)) return { os, browser: "safari", name: "Safari", version: major(/Version\/(\d+)/) };
+  return { os, browser: "other", name: "This browser", version: undefined };
+}
+
+// `platform` with the macOS version Chromium on a Mac gives when asked, `[major, minor]`; the
+// user agent says 10.15.7 whatever the version. Unchanged when it does not say.
+export async function withOsVersion(platform, { userAgentData }) {
+  if (platform.os !== "mac" || !userAgentData?.getHighEntropyValues) return platform;
+  try {
+    const { platformVersion } = await userAgentData.getHighEntropyValues(["platformVersion"]);
+    const [major, minor = 0] = platformVersion.split(".").map(Number);
+    return major ? { ...platform, osVersion: [major, minor] } : platform;
+  } catch {
+    return platform;
+  }
+}
+
+// A phone's browser can share no screen or tab, so it records the mic alone.
+export const isPhone = ({ os }) => os === "android" || os === "ios";
+
+const SCREEN = "Share your screen with \"Share system audio\" on, or the tab with your call.";
+const TAB = "Share the tab with your call.";
+const atLeast = ([major, minor], [wantMajor, wantMinor]) => major > wantMajor || (major === wantMajor && minor >= wantMinor);
+
+// What to tell the user on `platform` about recording a call's sound, as one short instruction,
+// and the words of the button that asks for a share, or null where a share carries no sound.
+// `monitor` is the label of an input that already carries the computer's sound, if there is one.
+export function audioLimits({ os, browser, name = "This browser", version, osVersion }, monitor = null) {
+  if (isPhone({ os })) return { share: null, text: "A phone records only your mic, not another app's sound: put the call on speaker, or record it on a computer." };
+  if (monitor) {
+    return { share: browser === "chromium" ? "Share a tab" : null, text: `Your computer's sound comes in through ${monitor}: nothing to share.` };
+  }
+  if (browser !== "chromium") return { share: null, text: `${name} can't record a call's sound, only your mic. Use Chrome or Edge for calls.` };
+  if (os === "windows" || os === "chromeos") return { share: "Share screen or tab", text: SCREEN };
+  if (os === "mac") {
+    // Chrome records the screen's sound on macOS from Chrome 141 on macOS 14.2.
+    if (version && version < 141) {
+      return { share: "Share a tab", text: `${name} ${version} can only record a tab's sound (${name} 141 can record the screen's). ${TAB}` };
+    }
+    if (!osVersion) return { share: "Share screen or tab", text: `${TAB} The screen's sound works only on macOS 14.2 or newer.` };
+    if (!atLeast(osVersion, [14, 2])) {
+      return { share: "Share a tab", text: `macOS ${osVersion.join(".")} lets ${name} record only a tab's sound (macOS 14.2 can record the screen's). ${TAB}` };
+    }
+    return { share: "Share screen or tab", text: SCREEN };
+  }
+  return { share: "Share a tab", text: `${name} can only record a tab's sound. Share the tab with your call; desktop apps such as Zoom won't be heard.` };
 }

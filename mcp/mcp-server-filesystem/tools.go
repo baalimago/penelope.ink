@@ -12,7 +12,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/baalimago/clai-in-wasmer-sh-poc/mcp/mcpserver"
+	"github.com/baalimago/penelope.ink/mcp/mcpserver"
 )
 
 const schemaDialect = "https://json-schema.org/draft/2020-12/schema"

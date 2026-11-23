@@ -4,8 +4,8 @@
 # and audio_record find and open inputs on Linux:
 #
 #   browser-mic           the browser's default microphone (getUserMedia)
-#   browser-tab.monitor   the audio of a tab, window or screen the user shares (getDisplayMedia),
-#                         the monitor of the sink browser-tab
+#   browser-tab.monitor   the audio of a screen or tab the user shares (getDisplayMedia), the
+#                         monitor of the sink browser-tab, listed only while something is shared
 #   browser-devN          each other audio input of the browser's, by deviceId; on Linux these
 #   browser-devN.monitor  include PipeWire's "Monitor of ..." sources, which hold what the
 #                         computer plays, a meeting app's audio included (sink browser-devN)
@@ -21,10 +21,12 @@
 
 # The page's inputs, from /run/audio/devices: a file name and a label each. One whose label starts
 # "Monitor of " (PipeWire's and PulseAudio's name for a sink's monitor, and the shared tab's) is
-# the monitor source NAME.monitor of a sink NAME, as on a Linux desktop; the rest are sources.
+# the monitor source NAME.monitor of a sink NAME, as on a Linux desktop; the rest are sources. One
+# with no label has nothing to record now (no screen or tab shared) and is left out.
 names=()
 labels=()
 while IFS=$'\t' read -r name label; do
+  [ -n "$label" ] || continue
   names+=("$name")
   labels+=("$label")
 done < /run/audio/devices
@@ -99,6 +101,11 @@ if [ ${#inputs[@]} -eq 0 ]; then
   exec /bin/ffmpeg "${args[@]}"
 fi
 
+# Held open here and inherited by ffmpeg: a write ends an input only while it is open (web/src/audio.rs).
+for file in "${inputs[@]}"; do
+  exec {held}<"$file"
+done
+
 stop() {
   for file in "${inputs[@]}"; do
     printf end > "$file"
@@ -107,8 +114,16 @@ stop() {
 trap stop INT TERM
 /bin/ffmpeg "${args[@]}" &
 ffmpeg=$!
-# A trapped signal ends `wait` early; wait again for ffmpeg to finish.
-while ! wait $ffmpeg; do
-  status=$?
-  kill -0 $ffmpeg 2>/dev/null || exit $status
+# A trapped signal ends `wait` early (a status above 128), so wait again for ffmpeg to finish.
+# The waits are counted: `kill -0` succeeds on a child this bash already reaped, so a loop on it
+# never ended once ffmpeg had failed or was killed, and a long loop overflows the machine's stack.
+status=0
+for _ in 1 2 3 4 5; do
+  wait $ffmpeg
+  next=$?
+  # 127: ffmpeg is reaped already, so the status before this one is its own.
+  [ $next -eq 127 ] && break
+  status=$next
+  [ $status -le 128 ] && break
 done
+exit $status
