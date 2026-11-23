@@ -1,4 +1,5 @@
-// Penelope, the red pen on the desk: the meeting's agent (penelope.json) and the bubble to talk to her.
+// Penelope, the red pen on the desk: the app's agent (penelope.json), who guides the user, answers about
+// the app and their meetings, and corrects the meeting in focus; and the bubble to talk to her.
 import { renderMarkdown } from "./markdown.js";
 
 const MOODS = ["glad", "unsure", "sorry"];
@@ -7,18 +8,53 @@ const MOUTHS = {
   unsure: "M19.5 93 Q21.75 90.5 24 93 T28.5 93",
   sorry: "M19.5 95 Q24 89.5 28.5 95",
   busy: "M22.2 93 a1.8 2.2 0 1 0 3.6 0 a1.8 2.2 0 1 0 -3.6 0",
+  open: "M20.6 93 a3.4 3.4 0 1 0 6.8 0 a3.4 3.4 0 1 0 -6.8 0",
+  chomp: "M19.5 93 l2.25 -1.4 l2.25 1.4 l2.25 -1.4 l2.25 1.4",
+  // Chewing: a full mouth, then closed and wavy, by turns; then a gulp.
+  full: "M21.4 93 a2.6 1.9 0 1 0 5.2 0 a2.6 1.9 0 1 0 -5.2 0",
+  munch: "M20.2 93.4 q1.9 -1.5 3.8 0 t3.8 0",
+  gulp: "M22.9 93 a1.1 1.3 0 1 0 2.2 0 a1.1 1.3 0 1 0 -2.2 0",
 };
+// How near her eyes, in px, a resting pointer gets pounced on, how long it rests first, and how seldom.
+const POUNCE_REACH = 300;
+const POUNCE_REST_MS = 900;
+const POUNCE_EVERY_MS = 25_000;
+// How she chews what she caught: bites, each this long, then a gulp.
+const CHEWS = 6;
+const CHEW_MS = 150;
+// How long her bubble takes to shrink back into her (pad.css .penelope-bubble).
+const BUBBLE_OUT_MS = 300;
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Where her pupils look, in px, for a pointer `dx, dy` px from her eyes: toward it, less when it is close.
+export function gaze(dx, dy) {
+  const d = Math.hypot(dx, dy);
+  if (!d) return { x: 0, y: 0 };
+  const reach = Math.min(1, d / 60);
+  return { x: (dx / d) * 1.7 * reach, y: (dy / d) * 2.2 * reach };
+}
+
+// How she jumps at a pointer `dx, dy` px from her eyes: as far as `most` px, hardly down, leaning toward it;
+// `reached` when she gets all the way there, and so eats it rather than snap at the air.
+export function lunge(dx, dy, most = 170) {
+  const k = Math.min(1, most / (Math.hypot(dx, dy) || 1));
+  const x = dx * k;
+  return { x, y: Math.min(30, dy * k), turn: Math.max(-15, Math.min(15, x / 10)), reached: k === 1 && dy <= 30 };
+}
 
 // The INPUT section of Penelope's prompt: the user message of one turn.
-export function penelopeQuery({ title, transcriptLines, summaryLines, corrections, request }) {
-  for (const [field, value] of Object.entries({ title, transcriptLines, summaryLines, corrections, request })) {
+export function penelopeQuery({ screen, actions, corrections, request }) {
+  for (const [field, value] of Object.entries({ screen, actions, corrections, request })) {
     if (value === undefined) throw new Error(`penelopeQuery: ${field} is missing`);
   }
   return [
     "INPUT",
-    `Meeting: ${title}`,
-    `transcript.md: ${transcriptLines} lines. summary.md: ${summaryLines} lines.`,
-    "The user's unsaved corrections, already in the copies:",
+    "On the user's screen:",
+    ...screen.map((line) => `- ${line}`),
+    "Actions the app can take for you now:",
+    ...actions.map((line) => `- ${line}`),
+    "The user's unsaved corrections to the meeting in focus, already in its copies:",
     ...corrections.map((c) => `- ${c}`),
     `Request: ${request}`,
   ].join("\n");
@@ -36,18 +72,23 @@ export function correctionsOf(fixes, limit = 20) {
   return out.length > limit ? [...out.slice(0, limit), `and ${out.length - limit} more`] : out;
 }
 
+// The actions an answer's `do` names: { action, meeting }, meeting null when it names none.
+const actionsOf = (list) => (Array.isArray(list) ? list : [])
+  .filter((a) => typeof a?.action === "string")
+  .map((a) => ({ action: a.action, meeting: typeof a.meeting === "string" ? a.meeting : null }));
+
 // Penelope's final answer, the JSON object her prompt asks for; what she said as it is, when it is none.
 export function parseSay(text) {
   const tail = (text ?? "").trim().replace(/```(?:json)?\s*([\s\S]*?)\s*```$/, "$1");
   for (let at = tail.lastIndexOf("{"); at >= 0; at = at > 0 ? tail.lastIndexOf("{", at - 1) : -1) {
     try {
       const answer = JSON.parse(tail.slice(at));
-      if (typeof answer?.say === "string") return { say: answer.say.trim(), mood: MOODS.includes(answer.mood) ? answer.mood : "glad" };
+      if (typeof answer?.say === "string") return { say: answer.say.trim(), mood: MOODS.includes(answer.mood) ? answer.mood : "glad", actions: actionsOf(answer.do) };
     } catch {
       // Not the answer's opening brace.
     }
   }
-  return { say: tail || "…", mood: "glad" };
+  return { say: tail || "…", mood: "glad", actions: [] };
 }
 
 // What Penelope is doing, from a tool_call record.
@@ -73,7 +114,20 @@ export function activityOf({ name, inputs = {} }) {
   }
 }
 
-// The pen and her bubble: `ask(text)` → { say, mood, step }, `step` the proposals `undo(step)` takes back.
+// How the app works, in her words, leaving out the steps the user has done.
+export function guideText({ provider, notebook }) {
+  const steps = [
+    !provider && "[**Connect an AI provider**](#provider-card) on the pad.",
+    !notebook && "[**Sign in to slivingdoc**](#notebook-card) for your notebook.",
+    "**New recording**: share your call's tab and start.",
+    "**Stop and summarize**: I write it all up.",
+    "Ask me anything here: the app, your meetings, or the one you have open.",
+  ].filter(Boolean);
+  return `Hi, I'm **Penelope**! I take your meeting minutes:\n\n${steps.map((s, i) => `${i + 1}. ${s}`).join("\n")}`;
+}
+
+// The pen and her bubble, one conversation for the session: `ask(text)` → { say, mood, step, after }, `step`
+// the proposals `undo(step)` takes back, `after()` what the app does once she has said it.
 export class Penelope {
   constructor({ root, ask, undo, canUndo }) {
     this.root = root;
@@ -81,14 +135,17 @@ export class Penelope {
     this.undo = undo;
     this.canUndo = canUndo;
     this.$ = (id) => root.querySelector(`#${id}`);
-    this.logs = new Map();
-    this.key = null;
+    this.log = [];
+    this.focus = null;
+    this.asked = false;
+    this.nextPounce = 0;
+    this.follow();
     this.ideas = [];
     this.busy = false;
     this.doing = "";
     this.mood = "glad";
     this.tipped = false;
-    this.$("penelope-pen").onclick = () => this.toggle(this.$("penelope-bubble").hidden);
+    this.$("penelope-pen").onclick = () => this.toggle(!this.isOpen);
     this.$("penelope-close").onclick = () => this.toggle(false);
     this.$("penelope-form").onsubmit = (e) => {
       e.preventDefault();
@@ -103,51 +160,154 @@ export class Penelope {
     this.$("penelope-input").addEventListener("input", (e) => this.fit(e.target));
   }
 
-  get log() {
-    if (!this.logs.has(this.key)) {
-      this.logs.set(this.key, [{
-        who: "her",
-        text: "Hi, I'm **Penelope**, the red pen around here: I catch what the pencil got wrong. " +
-          "Ask me to fix a name, split a line between speakers, or bring the summary up to date. " +
-          "What I change shows in pen, for you to keep or undo.",
-      }]);
-    }
-    return this.logs.get(this.key);
+  // On the desk, early (arrival.js): she pops up from below the screen's edge, saying nothing yet.
+  appear() {
+    if (!this.root.hidden) return;
+    this.root.hidden = false;
+    this.root.classList.add("arriving");
+    this.$("penelope-pen").addEventListener("animationend", () => this.root.classList.remove("arriving"), { once: true });
   }
 
-  // On the desk for the meeting `key` (null puts her away), with `ideas` to offer.
-  place(key, ideas = []) {
-    const shown = key !== null;
-    if (this.root.hidden === shown) {
-      this.root.hidden = !shown;
-      if (shown) this.root.classList.add("arriving");
+  // Asleep while the agent she is still loads, as her Ask waits for it (loadbar.js); once awake she
+  // gives the greeting she was asked for (arrive).
+  doze(on) {
+    if (on === this.root.classList.contains("dozing")) return;
+    this.root.classList.toggle("dozing", on);
+    if (on) return;
+    if (!this.root.hidden) {
+      this.root.classList.add("waking");
+      setTimeout(() => this.root.classList.remove("waking"), 650);
     }
-    if (!shown) this.toggle(false);
-    if (key !== this.key) {
-      this.key = key;
-      this.render();
-    }
-    if (ideas.join("\n") !== this.ideas.join("\n")) {
-      this.ideas = ideas;
-      this.render();
-    }
+    this.greet();
   }
 
-  toggle(open) {
+  // Once the app has arrived on the pad: she says `guide`, and opens her bubble a moment after she is awake.
+  arrive(guide) {
+    const said = { who: "her", text: guide };
+    said.actions = [["Got it", () => {
+      said.actions = null;
+      this.toggle(false);
+    }]];
+    this.log.push(said);
+    this.appear();
+    this.greeting = true;
+    this.greet();
+  }
+
+  greet() {
+    if (!this.greeting || this.root.classList.contains("dozing")) return;
+    this.greeting = false;
+    setTimeout(() => !this.isOpen && this.toggle(true, false), 1400);
+  }
+
+  // The meeting in focus, its path or null, with `ideas` to offer.
+  place(focus, ideas = []) {
+    if (focus === this.focus && ideas.join("\n") === this.ideas.join("\n")) return;
+    if (focus !== this.focus) this.asked = false;
+    this.focus = focus;
+    this.ideas = ideas;
+    this.render();
+  }
+
+  get isOpen() {
+    return this.root.classList.contains("open");
+  }
+
+  // The bubble grows out of her and shrinks back into her (pad.css .penelope-bubble.shown); it is
+  // hidden only once it has shrunk, and a click while it shrinks opens it again.
+  toggle(open, focus = true) {
     const bubble = this.$("penelope-bubble");
-    bubble.hidden = !open;
+    const win = this.root.ownerDocument.defaultView;
+    clearTimeout(this.closing);
     this.$("penelope-pen").setAttribute("aria-expanded", String(open));
     this.root.classList.toggle("open", open);
     this.root.ownerDocument.body.classList.toggle("penelope-open", open);
     if (open) {
+      if (bubble.hidden) {
+        bubble.hidden = false;
+        void bubble.offsetWidth;
+      }
+      bubble.classList.add("shown");
       this.render();
-      this.$("penelope-input").focus();
+      if (focus) this.$("penelope-input").focus();
+    } else {
+      bubble.classList.remove("shown");
+      const calm = win.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+      this.closing = setTimeout(() => (bubble.hidden = true), calm ? 0 : BUBBLE_OUT_MS);
     }
+  }
+
+  // Her eyes follow the pointer, and one that rests near her, not on her or her bubble, is now and then pounced on.
+  follow() {
+    const doc = this.root.ownerDocument;
+    const win = doc.defaultView;
+    const calm = win.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    let at = null;
+    let frame = 0;
+    let rest = 0;
+    const look = () => {
+      frame = 0;
+      clearTimeout(rest);
+      if (this.root.hidden || !at) return;
+      const eyes = this.root.querySelector(".penelope-eyes").getBoundingClientRect();
+      const dx = at.x - (eyes.left + eyes.width / 2);
+      const dy = at.y - (eyes.top + eyes.height / 2);
+      const { x, y } = gaze(dx, dy);
+      this.root.style.setProperty("--look-x", `${x.toFixed(2)}px`);
+      this.root.style.setProperty("--look-y", `${y.toFixed(2)}px`);
+      const d = Math.hypot(dx, dy);
+      const onHer = doc.elementFromPoint(at.x, at.y)?.closest?.("#penelope-bubble, .penelope-pen");
+      if (!calm && d > 50 && d < POUNCE_REACH && !onHer) rest = setTimeout(() => this.pounce(dx, dy), POUNCE_REST_MS);
+    };
+    doc.addEventListener("pointermove", (e) => {
+      at = { x: e.clientX, y: e.clientY };
+      frame ||= win.requestAnimationFrame(look);
+    }, { passive: true });
+  }
+
+  // She jumps at the pointer `dx, dy` px from her eyes, mouth open, and chomps: one she reaches she chews
+  // and gulps, and it is gone meanwhile; one out of her reach she snaps at, and misses.
+  async pounce(dx, dy) {
+    const body = this.root.ownerDocument.body;
+    if (this.pouncing || this.busy || this.root.hidden || this.root.classList.contains("dozing") || Date.now() < this.nextPounce) return;
+    this.nextPounce = Date.now() + POUNCE_EVERY_MS;
+    this.pouncing = true;
+    const mouth = this.$("penelope-mouth");
+    const { x, y, turn, reached } = lunge(dx, dy);
+    this.root.style.setProperty("--lunge-x", `${x.toFixed(1)}px`);
+    this.root.style.setProperty("--lunge-y", `${y.toFixed(1)}px`);
+    this.root.style.setProperty("--lunge-turn", `${turn.toFixed(1)}deg`);
+    this.root.classList.add("pouncing");
+    mouth.setAttribute("d", MOUTHS.open);
+    mouth.setAttribute("fill", "#4a1a14");
+    await sleep(420);
+    if (reached) body.classList.add("pen-eaten");
+    mouth.setAttribute("d", MOUTHS.chomp);
+    mouth.setAttribute("fill", "none");
+    await sleep(530);
+    this.root.classList.remove("pouncing");
+    if (reached) {
+      this.root.classList.add("chewing");
+      for (let bite = 0; bite < CHEWS; bite++) {
+        mouth.setAttribute("d", bite % 2 ? MOUTHS.munch : MOUTHS.full);
+        mouth.setAttribute("fill", bite % 2 ? "none" : "#4a1a14");
+        await sleep(CHEW_MS);
+      }
+      this.root.classList.remove("chewing");
+      mouth.setAttribute("d", MOUTHS.gulp);
+      mouth.setAttribute("fill", "#4a1a14");
+      await sleep(220);
+      mouth.setAttribute("fill", "none");
+    }
+    this.render();
+    await sleep(350);
+    body.classList.remove("pen-eaten");
+    this.pouncing = false;
   }
 
   // Once a session: Penelope leans out and offers to look for the rest, as a certain paperclip would.
   tip(text, request) {
-    if (this.tipped || this.busy || !this.$("penelope-bubble").hidden) return;
+    if (this.tipped || this.busy || this.isOpen) return;
     this.tipped = true;
     this.log.push({ who: "her", text, actions: [["Yes, have a look", () => this.send(request)], ["No thanks", () => this.toggle(false)]] });
     this.toggle(true);
@@ -164,18 +324,20 @@ export class Penelope {
     if (!request || this.busy) return;
     this.$("penelope-input").value = "";
     this.fit(this.$("penelope-input"));
+    this.asked = true;
     const log = this.log;
     for (const item of log) item.actions = null;
     log.push({ who: "you", text: request });
     this.working(true);
     try {
-      const { say, mood, step } = await this.ask(request);
+      const { say, mood, step, after } = await this.ask(request);
       log.push({ who: "her", text: say, mood, step });
       this.mood = mood;
+      this.working(false);
+      after?.();
     } catch (error) {
       log.push({ who: "her", text: `My ink ran out: ${error.message}`, mood: "sorry" });
       this.mood = "sorry";
-    } finally {
       this.working(false);
     }
   }
@@ -208,7 +370,7 @@ export class Penelope {
     const doing = this.$("penelope-doing");
     doing.hidden = !this.busy;
     doing.textContent = this.doing;
-    if (this.$("penelope-bubble").hidden || this.key === null) return;
+    if (!this.isOpen) return;
     const items = this.log.map((item) => {
       const li = doc.createElement("li");
       li.className = item.who === "you" ? "penelope-you" : "penelope-her";
@@ -250,7 +412,7 @@ export class Penelope {
     list.replaceChildren(...items);
     list.scrollTop = list.scrollHeight;
     const ideas = this.$("penelope-ideas");
-    ideas.hidden = this.busy || this.log.some((item) => item.who === "you");
+    ideas.hidden = this.busy || this.asked;
     ideas.replaceChildren(...this.ideas.map((idea) => {
       const b = doc.createElement("button");
       b.type = "button";

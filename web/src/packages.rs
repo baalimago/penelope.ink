@@ -4,10 +4,13 @@
 //! package's filesystem table says.
 
 use std::fmt;
+use std::sync::Arc;
 
 use wasixv2::{CommandDefaults, Layer, Machine, OwnedBuffer};
 use webc::metadata::annotations::{Atom, Wasi};
 use webc::v3::read::OwnedReader;
+
+use crate::bin::BinFs;
 
 #[derive(Debug)]
 pub struct Error(String);
@@ -51,28 +54,32 @@ struct Command {
     defaults: Option<CommandDefaults>,
 }
 
+/// What comes after the boot ([`install_late`]), by name: programs, which come before the
+/// packages' commands as `first` does, and commands of packages, which come after them.
+#[derive(Default)]
+pub struct Late {
+    pub programs: Vec<String>,
+    pub commands: Vec<String>,
+}
+
 /// Installs `first`, files under their names, then the commands of `packages`, of which the
 /// earlier keeps a name two share, and mounts their volumes. Without a package command `sh`,
-/// bash's is `sh` too, since programs run `sh -c`. Resolves to the commands and volumes left
-/// out, and why.
+/// bash's is `sh` too, since programs run `sh -c`. `late` is listed in `/bin` and waited for.
+/// Resolves to `/bin` and to the commands and volumes left out, and why.
 pub async fn install(
     machine: &mut Machine,
     packages: &[Package],
     first: Vec<(String, OwnedBuffer)>,
-) -> Result<Vec<String>, Error> {
+    late: Late,
+) -> Result<(BinFs, Vec<String>), Error> {
     let mut notes = Vec::new();
-    let mut commands: Vec<Command> = first
-        .into_iter()
-        .map(|(name, atom)| Command {
-            name,
-            atom,
-            defaults: None,
-        })
-        .collect();
+    let mut commands: Vec<Command> = Vec::new();
+    let all: Vec<&Package> = packages.iter().collect();
     for package in packages {
-        commands.extend(package_commands(package, packages, &mut notes)?);
+        commands.extend(package_commands(package, &all, &mut notes)?);
     }
     if !commands.iter().any(|c| c.name == "sh")
+        && !first.iter().any(|(name, _)| name == "sh")
         && let Some(bash) = commands.iter().find(|c| c.name == "bash")
     {
         commands.push(Command {
@@ -82,37 +89,85 @@ pub async fn install(
         });
     }
 
-    let (mut root, mounts) = volumes(machine, packages, &mut notes)?;
-    let files = commands.iter().map(|c| (c.name.clone(), c.atom.clone()));
-    root.extend(
-        machine
-            .commands_layer(files)
-            .map_err(|e| Error(format!("cannot install the commands: {e}")))?,
-    );
+    let (root, mounts) = volumes(machine, packages, &mut notes)?;
     machine
         .mount_root_layers(root)
         .await
         .map_err(|e| Error(format!("cannot stack the packages under /: {e}")))?;
+    let bin = BinFs::new(
+        (first.into_iter().map(|(name, atom)| (name, Some(atom))))
+            .chain(late.programs.into_iter().map(|name| (name, None)))
+            .chain(commands.iter().map(|c| (c.name.clone(), Some(c.atom.clone()))))
+            .chain(late.commands.into_iter().map(|name| (name, None))),
+    );
     let defaults = commands
         .into_iter()
         .filter_map(|c| Some((c.name, c.defaults?)));
     machine
         .set_wasix1_command_defaults(defaults)
         .map_err(|e| Error(format!("cannot set the commands' defaults: {e}")))?;
+    mount_volumes(machine, mounts).await?;
+    for dir in ["/bin", "/usr/bin"] {
+        machine
+            .mount(dir, Arc::new(bin.clone()), true)
+            .await
+            .map_err(|e| Error(format!("cannot mount {dir}: {e}")))?;
+    }
+    Ok((bin, notes))
+}
+
+/// Adds `packages` to a machine that runs: their commands are files of `bin`, with their
+/// defaults for v1 programs, and their volumes are mounted, except one at `/`. A command's atom
+/// may be in one of `booted`. Of `expected`, what no package had is no longer waited for.
+/// Resolves to what was left out, and why.
+pub async fn install_late(
+    machine: &Machine,
+    bin: &BinFs,
+    booted: &[Package],
+    packages: &[Package],
+    expected: &[String],
+) -> Result<Vec<String>, Error> {
+    let mut notes = Vec::new();
+    let all: Vec<&Package> = packages.iter().chain(booted).collect();
+    let mut defaults = Vec::new();
+    for package in packages {
+        for command in package_commands(package, &all, &mut notes)? {
+            if bin.fill(&command.name, command.atom)
+                && let Some(default) = command.defaults
+            {
+                defaults.push((command.name, default));
+            }
+        }
+    }
+    for name in expected {
+        if bin.miss(name) {
+            notes.push(format!("no package that came has the command {name}"));
+        }
+    }
+    let (root, mounts) = volumes(machine, packages, &mut notes)?;
+    if !root.is_empty() {
+        notes.push("a package that came after the boot has a volume at /, which is left out".into());
+    }
+    mount_volumes(machine, mounts).await?;
+    machine.add_wasix1_command_defaults(defaults).await;
+    Ok(notes)
+}
+
+async fn mount_volumes(machine: &Machine, mounts: Vec<(String, Layer)>) -> Result<(), Error> {
     for (path, layer) in mounts {
         machine
             .mount_layer(&path, &layer, true)
             .await
             .map_err(|e| Error(format!("cannot mount a package volume at {path}: {e}")))?;
     }
-    Ok(notes)
+    Ok(())
 }
 
 /// The atom of a command is in its package, or, for an atom of a dependency, in another of
 /// `packages`.
 fn package_commands(
     package: &Package,
-    packages: &[Package],
+    packages: &[&Package],
     notes: &mut Vec<String>,
 ) -> Result<Vec<Command>, Error> {
     let mut commands = Vec::new();

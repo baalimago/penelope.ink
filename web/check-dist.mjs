@@ -1,7 +1,7 @@
 // Runs the static site `make dist` writes, as Edge serves it: dist/public's files and only the
 // headers dist/settings/config.toml gives static-web-server, nothing of web/server.mjs's. Checks
-// that every file the page asks for is there, that the page is cross-origin isolated, that it
-// boots, and that clai and bash run in it. DIST_URL checks a site that is already up instead
+// that every file the page asks for is there, that the page is cross-origin isolated, installable
+// and stamped with the site's version, that it boots, and that clai and bash run in it. DIST_URL checks a site that is already up instead
 // (`wasmer run dist --net`, or the deployed app).
 import { readFile } from "node:fs/promises";
 import http from "node:http";
@@ -59,6 +59,8 @@ async function serve() {
 const ROWS = [
   { line: "clai help", status: 0, prints: "Usage: clai" },
   { line: "ls /bin | grep -x slivingdoc", status: 0, prints: "slivingdoc" },
+  // A program that comes after the boot, through its launcher.
+  { line: "npx -y slivingdoc@1.3.1 version", status: 0, prints: "slivingdoc 1.3.1" },
   { line: "echo static | tr a-z A-Z", status: 0, prints: "STATIC" },
 ];
 
@@ -79,6 +81,23 @@ try {
     console.error("\nFAIL: the page is not cross-origin isolated: check the COOP and COEP headers");
     process.exitCode = 1;
   }
+  // Installable as an app: Chrome takes its name, icons and window from www/manifest.json.
+  const { errors, manifest } = await (await context.newCDPSession(page)).send("Page.getAppManifest");
+  const icons = await Promise.all((manifest?.icons ?? []).map(async (icon) => `${icon.sizes} ${(await page.request.get(icon.url)).status()}`));
+  if (errors.length > 0 || !manifest?.name || manifest.display !== "kStandalone" || !icons.includes("192x192 200") || !icons.includes("512x512 200")) {
+    console.error(`\nFAIL: the page is not installable: ${JSON.stringify({ errors, name: manifest?.name, display: manifest?.display, icons })}`);
+    process.exitCode = 1;
+  }
+  // Stamped (stamp-dist.mjs): the page says the version version.json says, so it offers no reload.
+  const stamp = await page.evaluate(async () => ({
+    page: document.querySelector('meta[name="penelope-version"]')?.content,
+    site: await fetch("version.json", { cache: "no-store" }).then((r) => r.json()).then((v) => v.version, () => null),
+    offered: !document.querySelector("#update").hidden,
+  }));
+  if (!/^[0-9a-f]{16}$/.test(stamp.page ?? "") || stamp.page !== stamp.site || stamp.offered) {
+    console.error(`\nFAIL: the page is not stamped with the site's version: ${JSON.stringify(stamp)}`);
+    process.exitCode = 1;
+  }
   for (const { line, status: want, prints } of ROWS) {
     const before = await page.evaluate(() => window.terminalText());
     const status = await page.evaluate((line) => window.runCommand(line), line);
@@ -93,7 +112,7 @@ try {
     console.error(`\nFAIL: the site is missing what the page asked for:\n${missing.join("\n")}`);
     process.exitCode = 1;
   }
-  if (!process.exitCode) console.log(`\nok: ${url} is cross-origin isolated, boots, and runs clai and bash with nothing missing`);
+  if (!process.exitCode) console.log(`\nok: ${url} is cross-origin isolated, installable and stamped, boots, and runs clai and bash with nothing missing`);
 } finally {
   await browser.close();
   server?.close();

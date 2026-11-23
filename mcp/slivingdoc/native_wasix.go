@@ -3,7 +3,7 @@
 package git2
 
 // The wasix Go port has no cgo, so on wasix this package runs libgit2 in a helper process,
-// slivingdoc-git2 (helper.c beside this file in clai-in-wasmer-sh-poc), and calls it over its
+// slivingdoc-git2 (helper.c beside this file in this repository), and calls it over its
 // stdin and stdout. The helper is the same pinned libgit2 compiled to WASI; the seam functions
 // below are native.go's, one request each.
 

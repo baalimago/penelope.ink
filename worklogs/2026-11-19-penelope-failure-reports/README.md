@@ -98,7 +98,7 @@ and its end (`machine.run` runs one at a time). Download log saves the same text
     │                          │                           │
     │                          │── list() ────────────────▶│
     │                          │                           │
-    │                          │◀─ runs, kept failed runs ─│
+    │                          │◀─ the kept runs ──────────│
     │                          │                           │
     │── Copy or Download ─────▶│                           │
     │                          │                           │
@@ -112,13 +112,13 @@ and its end (`machine.run` runs one at a time). Download log saves the same text
 
 ## Status board
 
-**Line:** waiting on human: root (README sign-off)
+**Line:** running
 
 | #   | Node                        | Parent | Class       | Interface                                                                                                                         | Status      |
 | --- | --------------------------- | ------ | ----------- | --------------------------------------------------------------------------------------------------------------------------------- | ----------- |
-| 1   | Summary links               | root   | contract    | `summariesIn` (`web/www/minutes.js`): the meeting summaries an agent's reply links to                                             | Not Started |
-| 2   | Run log                     | root   | contract    | `RunLog` (`open`, `attach`, `add`, `ended`, `noted`, `cause`, `close`, `list`, `text`; `web/www/runlog.js`)                     | Not Started |
-| 3   | Failure reports in Penelope | root   | composition | root: UI `report`: the failure note's cause, Copy log and Download log; Run logs under the peek; the app's clai runs at `LOG_LEVEL` | Not Started |
+| 1   | Summary links               | root   | contract    | `summariesIn` (`web/www/minutes.js`): the meeting summaries an agent's reply links to                                             | Complete    |
+| 2   | Run log                     | root   | contract    | `RunLog` (`open`, `attach`, `add`, `ended`, `noted`, `cause`, `close`, `list`, `text`; `web/www/runlog.js`)                     | Complete    |
+| 3   | Failure reports in Penelope | root   | composition | root: UI `report`: the failure note's cause, Copy log and Download log; Run logs under the peek; the app's clai runs at `LOG_LEVEL` | Complete    |
 
 ### Imports
 
@@ -174,8 +174,8 @@ file texts never enter a log (known-voices R1-06). A log over the log cap keeps 
 `RunLog.attach`, `RunLog.text`.
 
 **E6 — Debug detail stays in the log.** clai records below the terminal level go to the run log
-only. No diagnostic record reaches a note, the meeting view or Penelope's context. A clean run's
-log is held in memory for the session only and shows nothing (known-voices P5). Binds `RunLog.close`,
+only. No diagnostic record reaches a note, the meeting view or Penelope's context. A clean run
+puts up nothing (known-voices P5); its log is kept like a failed run's. Binds `RunLog.close`,
 the root.
 
 **E7 — The filed meeting is the one that reads.** `writeTranscript` reads the paths the run named in
@@ -197,8 +197,7 @@ meeting's files, a transcription) shows as its topic and length. Binds `RunLog.a
 | Log cap                                   | 2 MiB                                                                   | Proposal                                            |
 | Lines of stderr in a note's cause         | 5                                                                       | Proposal                                            |
 | Argument cap                              | 200 characters                                                          | Proposal                                            |
-| Logs kept across reloads                  | failed runs only, the newest 10, in IndexedDB                           | Maintainer, 2026-11-19 (Q2)                         |
-| Clean runs' logs                          | in memory for the session, the newest 5; never persisted                | Proposal (Q2 left it open)                          |
+| Logs kept across reloads                  | every run, failed or clean, the newest 10, in IndexedDB                 | Maintainer, 2026-11-19 (Q2), widened 2026-11-20     |
 | Model output in a log                     | none: kind and length only (E8)                                         | Maintainer, 2026-11-19 (Q3)                         |
 | Download file name                        | `penelope-<start>_<slug>-<job kind>.log`                                | Proposal                                            |
 
@@ -225,6 +224,7 @@ Phase 3 changes it, because the clai line gains `LOG_LEVEL`.
 
 | ID  | Severity | Node | Owner | Status | Summary |
 | --- | -------- | ---- | ----- | ------ | ------- |
+| A01 | quality andon | root | maintainer | Closed b146a55+wip | environment (the `web/www/clai.wasm` of 2026-11-20 08:57 against this tree, not rebuilt while `components/clai` is being edited) · `cd web && node check.mjs` · 14 FAIL lines before any change of this worklog: the trust check before a run (`-check` exits 2), a hub version published during a meeting, two meetings at once (Stop), replies to two meetings, the time left of a short recording, the pop-out's Stop, a Stop at once · b146a55+wip |
 
 ## Decisions (maintainer, 2026-11-19)
 
@@ -234,6 +234,8 @@ Phase 3 changes it, because the clai line gains `LOG_LEVEL`.
   if logs grow too big. Clean runs were left open. The proposal keeps the newest 5 in memory for
   the session only, because a clean run can still file the wrong thing (the paraphrased transcript
   of 2026-11-18 was a clean run). Dropping them is a one-line change.
+  **Amended 2026-11-20:** clean runs are kept across reloads like failed ones (newest 10 in all): an
+  88-minute meeting ran clean yet came out labelled `unknown-N`, and its log is what debugs it.
 - **Q3 — Content:** diagnostics only; no model output (E8).
 - **Q4 — Where Copy and Download live:** on the failure note and under the peek. The maintainer left
   the UX open; this frontend worklog stays lean, so phase 3 builds the proposal below and the
@@ -249,3 +251,11 @@ Phase 3 changes it, because the clai line gains `LOG_LEVEL`.
 
 - 2026-11-19 · plan · README drafted from the failure of 2026-11-19 (Background); waits on Q1–Q4 and the README sign-off
 - 2026-11-19 · plan · README amended: Q1–Q4 answered by the maintainer (Goal, Glossary, Imports, E2, E5, E6, new E8, parameters, Decisions with the Q4 UX proposal)
+- 2026-11-20 · plan · README amended: Q2 widened, clean runs' logs kept across reloads (E6, parameters, Copy a log later); the order of work holds, as penelope-known-voices has only R1-09 (human checks) open
+- 2026-11-20 · maintainer · README signed ("Add the diagnostics", answering the proposal to sign it with clean runs' logs kept)
+- 2026-11-20 · plan · phase files 1–3 written from the signed README; no validation round and no interface sign-off (orchestrator's brief: lean frontend worklog)
+- 2026-11-20 · work · phase 1 · A01 · the start gate `node check.mjs` fails 14 checks on the unchanged tree; the phases are built on at the orchestrator's brief, each end gate held against that baseline
+- 2026-11-20 · work · phase 1 Complete
+- 2026-11-20 · work · phase 2 Complete
+- 2026-11-20 · work · A01 closed · not by this session: `web/www/clai.wasm` was rebuilt at 14:18 by another session, and the gate passes against it · `cd web && node check.mjs`: ok, twice
+- 2026-11-20 · work · phase 3 Complete

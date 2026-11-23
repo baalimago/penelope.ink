@@ -141,6 +141,7 @@ export function startServer(port = Number(process.env.PORT ?? 5001)) {
       // threads share (ffmpeg and rg start threads).
       response.writeHead(200, {
         "content-type": type,
+        "content-length": body.length,
         "cross-origin-opener-policy": "same-origin",
         "cross-origin-embedder-policy": "require-corp",
       }).end(body);

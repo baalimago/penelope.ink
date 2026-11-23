@@ -23,7 +23,7 @@ export const PROVIDERS = [
     connect: "oauth",
     hosts: ["openrouter.ai"],
     // OpenRouter's PKCE flow: https://openrouter.ai/docs/guides/overview/auth/oauth
-    oauth: { authorize: "https://openrouter.ai/auth", exchange: "https://openrouter.ai/api/v1/auth/keys", label: "Minutes" },
+    oauth: { authorize: "https://openrouter.ai/auth", exchange: "https://openrouter.ai/api/v1/auth/keys", label: "Penelope" },
     manage: async (key) => `https://openrouter.ai/keys/${await sha256Hex(key)}`,
     models: {
       agent: { chat: "or:openai/gpt-5.6-luna", audio: OPENROUTER_AUDIO },
@@ -96,10 +96,11 @@ export async function exchangeCode(provider, { code, verifier }, fetchFn = fetch
   return body.key;
 }
 
-// What the callback page posts: the code and state on approval, an error otherwise.
+// What the callback page posts: the code and state on approval, an error otherwise, and the
+// issuer when the server names it (RFC 9207).
 export function callbackMessage(search) {
   const q = new URLSearchParams(search);
-  return { code: q.get("code"), state: q.get("state"), error: q.get("error_description") ?? q.get("error") };
+  return { code: q.get("code"), state: q.get("state"), error: q.get("error_description") ?? q.get("error"), iss: q.get("iss") };
 }
 
 export const SIGNIN_CHANNEL = "minutes-signin";

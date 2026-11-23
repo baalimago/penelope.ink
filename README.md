@@ -1,406 +1,233 @@
-# clai in the browser, on WASIX v2
+<p align="center">
+  <img src="web/www/favicon.svg" width="112" height="112" alt="Penelope's logo: a red pen with a pink bow on a yellow pad">
+</p>
 
-[clai](https://github.com/baalimago/clai), a Go program, compiled for a Go port to WASIX v2 and
-run on wasmer's WASIX v2 kernel in a browser tab. The page is a terminal over a small Linux-like
-machine whose `/bin` has clai, bash, coreutils, grep, sed, find, rg, fd and git from the Wasmer
-registry, ffmpeg, which records the browser's microphone and shared tab audio, and an `npx` and
-`uvx` that start the MCP servers clai profiles ask for; type `ls /bin` or `clai h`.
+<h1 align="center">Penelope</h1>
 
-```sh
-git clone https://github.com/baalimago/clai-in-wasmer-sh-poc
-cd clai-in-wasmer-sh-poc
-make poc
-```
+<p align="center">Meeting notes, recorded and written in your browser · <a href="https://penelope.ink">penelope.ink</a> · <a href="https://github.com/baalimago/penelope.ink">source on GitHub</a></p>
 
-`make poc` checks out the submodules it needs (`make submodules`: wasmer's own test suites stay out, because a recursive clone fails on one of their pinned commits), builds everything, downloads the registry packages that `web/packages.txt` lists
-(`make packages`, from registry.wasmer.io), serves the page on http://localhost:5001 and opens it
-in your default browser. The first build takes a few minutes (the Go port and the wasm kernel);
-later ones take seconds. `make check` runs the same page in headless Chromium and checks that
-`clai h` and `clai help` print clai's usage, that clai reads its terminal, that lines run
-in bash, that clai calls an MCP server that `uvx` starts, that its async commands run, and that
-slivingdoc serves with libgit2 behind it, that clai calls the filesystem MCP server that `npx`
-starts, and that ffmpeg records Chromium's fake microphone and
-clai's meeting-transcriber profile records and transcribes with it (with clai's test models).
-It also checks that the under-the-hood view sees what a line does, signs in with OpenRouter
-against a stand-in for its sign-in page and key exchange, runs the Minutes app's
-Record button through to the agent's reply, corrects a line of a filed transcript and saves it,
-and asks Penelope, the red pen, a question that she answers with her own profile. `web/units.test.mjs` covers the page's logic that
-needs no browser.
+Penelope records a meeting in a browser tab, transcribes it with the names of who spoke, writes a
+summary, and files both as Markdown notes. It runs entirely in the tab: the page boots a small
+Linux-like machine (Wasmer's WASIX kernel, compiled to WebAssembly) with bash, ffmpeg and the
+[clai](https://github.com/baalimago/clai) AI agent on it. There is no Penelope server. You bring
+your own AI provider, and your key stays in your browser. Penelope is also the app's guide: a red
+pen with a bow who answers your questions and corrects your notes.
 
-## Hosting it on Wasmer Edge
+It is a web app: use it at [penelope.ink](https://penelope.ink), or install it from there beside your
+native apps, in its own window.
 
-The page needs no server of its own: the machine's HTTP goes out as the page's `fetch` calls, and
-OpenAI's API, OpenRouter's (its key exchange included) and slivingdoc's all answer a browser's
-CORS preflight. So it is a static site:
+It is for anyone who wants minutes of their calls without installing a native app or handing their
+recordings to a notes service, and for developers who want to see real command-line programs run
+in a browser.
 
-```sh
-make dist        # dist/: the site, 155 MB of it in dist/public
-make check-dist  # the dist in headless Chromium, served with only the headers Edge will send
-make deploy      # check-dist, then wasmer deploy: the site on Edge
-```
+## What it can do
 
-`make deploy` needs the `wasmer` CLI (`curl https://get.wasmer.io -sSfL | sh`, or the `wasmer`
-of `components/wasmer`, built) and a login (`wasmer login`, or `WASMER_TOKEN`); `wasmer deploy`
-asks for the owner on the first deploy and writes it to `dist/app.yaml`.
+- **Record** your microphone and the call's sound from a shared tab or screen, or the mic only. On
+  a phone it records the mic only.
+- **Transcribe with speakers**, through your OpenAI key or your OpenRouter account. The agent
+  writes the summary; the transcript is filed word for word as the speech-to-text model heard it,
+  and no model writes its lines.
+- **Name the speakers.** "Who is speaking?" turns Speaker A and B into names, and a voice library
+  in your browser remembers voices, so later meetings name known people by voice.
+- **Proofread.** Click a line to correct its words, change its speaker or play it from the
+  recording, or the title to rename the meeting. Fix a name once and the app offers to fix it
+  everywhere. Save files the corrections.
+- **Keep notes** in this browser, or in a [slivingdoc](https://www.slivingdoc.dev) notebook with
+  history: slivingdoc.dev's hosted space or your own S3-compatible bucket. slivingdoc is optional.
+- **Work in parallel.** Transcribe one meeting while you record the next. A pop-out window, the
+  tab's title and system notifications show progress and the time left.
+- **Replay and redo.** Play or download a recording this browser kept, or transcribe it again.
+- **Ask Penelope.** She answers questions about the app and your meetings, corrects the open
+  meeting in pen for you to keep or undo, and can press Transcribe again, New recording or open a
+  meeting for you. **+ Tools** (beta) lets her use your Linear issues.
+- **Peek under the hood.** See what each click started, opened and connected to, use the machine's
+  terminal, and copy or download run logs.
+- **Install it** as an app beside your native ones: it is a web app, so **Install Penelope as an
+  app** in the sidebar puts it in its own window, in your dock, start menu or home screen (Chrome
+  and Microsoft Edge, on a computer or Android).
 
-`dist/` is `edge/` (a `wasmer.toml` that serves `public` with `wasmer/static-web-server`, its
-`settings/config.toml`, and an `app.yaml`) and `dist/public`, which is `web/www` and the three
-packages it loads from `node_modules`. The one thing the site must send is a pair of headers,
-`Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp`,
-which make the page cross-origin isolated so that guest memory can be a `SharedArrayBuffer`;
-`edge/settings/config.toml` adds them to every file. The same package runs locally with
-`wasmer run dist --publish 8080:8080` (the `wasmer` of `components/wasmer`; a released `wasmer`
-takes `--net` instead), and `DIST_URL=http://127.0.0.1:8080/ node web/check-dist.mjs` checks it. Edge
-takes up to 500 MB of files per app.
-
-## Minutes, and under the hood
-
-The page is **Minutes**, a meeting-notes app. **Peek under the hood** opens the machine it runs
-on below it: what each click started, opened and connected to, and the machine's terminal.
-Nothing the app does needs the peek; its buttons run programs on the machine directly: When
-one fails, a note hangs under the peek button with what went wrong (clai's `error` record: the
-provider's status and code, and clai's remedy when it has one; a failed tool is a warning) and a
-link that opens the peek's terminal with the failure's lines selected.
-
-| Button | Runs |
-| --- | --- |
-| Sign in with OpenRouter (Connect an AI provider) | nothing on the machine: OpenRouter's PKCE sign-in opens in a new tab, whose callback, `web/www/signin-callback.html`, hands the code back over a `BroadcastChannel`; the page trades it with its verifier at `POST https://openrouter.ai/api/v1/auth/keys` for a key that every run then gets as `OPENROUTER_API_KEY` |
-| Use key (Connect an AI provider) | nothing on the machine: the pasted OpenAI key reaches every run as `OPENAI_API_KEY` |
-| Disconnect (by the provider's chip) | nothing on the machine: the browser forgets the key. A key that a sign-in created stays live at its provider, so the card links to its page there (`https://openrouter.ai/keys/<sha256 of the key>`) to delete it |
-| Start recording | `clai -json -reply-only -n -profile-path cchub:baalimago/meeting-transcriber query '<notebook format>\n\nMeeting: <title>. <details>'`, in `~/notebook`. With `-n`, a hub profile that changed since this browser trusted it is refused at once instead of asked about on the console; the app then forgets the old trust, and the next Start recording trusts the new version. With `-json` every line clai prints is a record (`web/www/agent.js` reads them): the app takes the reply from the `reply` records and draws every record on the console (`web/www/records.js`): what streams is joined into running text, a tool is a line with its result under it, progress redraws one line, and an error is red with its status, code and hint. The agent picks the inputs from the meeting: the mic for a room, the mic and the default sink for a call |
-| Stop and summarize | types Enter on the console, which ends clai's `audio_record` |
-| Before you record (a checklist on a post-it) | **Allow the mic** asks for the microphone; **Share a tab with your call** asks for a screen or tab, whose audio is the sink `browser-tab` until the share stops; the page then listens to it and ticks **Sound heard** once sound comes through. Start recording waits for the mic and the share (or **record the mic only**), not for sound, so a recording can start before anyone speaks. While it records a shared tab, a minute with no sound from it (`QUIET_MS`, `AudioInputs.followShare`) puts up **Are you sharing the right tab?** on the page, in its title and as a system notification, whose permission Start recording asks for |
-| Send (answer the agent) | the same `clai`, with `-re` and the answer as the query |
-| A meeting | `cat` of its summary and transcript: the summary rendered as markdown, the transcript one row per utterance (`web/www/proofread.js`) |
-| A line of the transcript, its speaker, its time | nothing yet: a click on the words corrects them in place, one on the speaker reassigns the line, and one on the time plays the line from the recording this browser kept. A correction is struck in red pen and written in in blue, and a post-it counts them; a word or name fixed once is offered **everywhere** it is in the transcript and the summary |
-| Penelope, the red pen at the bottom right (Ask, in her bubble) | `printf %s "$1" > /tmp/penelope/profile.json` and copies of the meeting's files as they read now, with the unsaved corrections, into `/tmp/penelope/<meeting>/`; then there `clai -json -reply-only -profile-path /tmp/penelope/profile.json query '<INPUT>'`, with `-dre` from the second question on, so the conversation goes on. The profile is `web/www/penelope.json`; the INPUT holds the meeting, the corrections and the question (`web/www/penelope.js`). The app reads the copies back and shows each line she changed, added or took out as a correction in pen, one step that **Undo these** takes back; her answer is the JSON object her prompt asks for, whose `mood` sets her face |
-| Save (on the corrections' post-it) | `printf %s "$1" > <summary>` and the same for the transcript, the corrected files reaching bash as its arguments, each correction placed by its line's text in the file as it is now; then, with slivingdoc, `slivingdoc commit -m 'Minutes: corrections to <title>'`. A commit that fails puts the files back; one that conflicts keeps the other side's lines and commits again, so no conflict block stays in the notebook. Leaving the meeting waits until the corrections are saved or dropped |
-| history | `slivingdoc log` |
-| Sign out | `slivingdoc logout`: the site revokes the key and the login is forgotten, here and on the machine |
-
-The agent is the whole transcriber: it records (its `audio_record` tool starts ffmpeg), transcribes
-with speaker labels, and files the notes. It needs an AI provider, and `web/www/providers.js` lists
-them: how each is connected (a pasted key or an OAuth sign-in), the variable its key reaches clai
-as, and the models the agents run with on it. With OpenAI the profiles run as they are
-(`gpt-4o-transcribe-diarize`); with OpenRouter the agent gets `-cm 'or:openai/gpt-5.6-luna' -am
-'or:elevenlabs/scribe-v2+diarize'` (a clai built from its `feat-openrouter-transcribe-models`
-branch or later; `+diarize` asks for speaker labels) and Penelope `-cm 'or:openai/gpt-6.1-sol'`, which override the profiles'
-models. The first connected provider in the list is the one used. The app only puts the notebook's layout (`meetings/summaries/<start>_<slug>.md` and
-`meetings/transcripts/...`) at the top of the query, so the profile stays as it is. Without a
-slivingdoc token the notes stay in `~/notebook` in the tab; with one (from slivingdoc.dev, under
-Connect slivingdoc), every run gets `SLIVINGDOC_TOKEN`, so the agent's slivingdoc server writes to
-the hosted notebook and the list pulls it first. When the agent is done, the meeting it filed opens
-as Summary and Transcript cards; what it says shows as markdown (`marked`, with raw HTML shown as
-text and links to the notebook's files opening them in the app). Sign out revokes the key at the
-site before the app forgets it; when that fails the login stays, with the CLI's last line and the
-Tokens page to revoke it by hand, because a live key must not be orphaned silently.
-
-Programs send what the app reads to `/run/page/out`, a write-only file whose every write, once
-closed, reaches the page as one message whose first line names it (`reply`, `meetings`,
-`meeting`, `history`).
-
-The peek is built from the kernel itself: the WASIX v2 trace layer
-(`components/wasmer/lib/wasixv2/trace`) reports each `execve`, exit, open, `connect`, `dup`,
-close, rename, mkdir and unlink that succeeds, and the bytes through each descriptor, for every
-process, WASIX v1 programs such as bash and ffmpeg included. `web/src/observe.rs` keeps them
-until the page takes them, as JSON, adding up the bytes a descriptor moves between two other
-events and naming the host behind each address the machine's resolver handed out. Each line runs as
-`bash -c LINE TAG`, so a process's tag, from its `$0` and inherited by what it starts, says which
-click or terminal line it belongs to. The view (`web/www/hood.js`) shows the last click's line
-and its process tree (each process labelled: the agent, an MCP server, libgit2, the recording ffmpeg), the event log, the connections by host and the files written, with the
-bytes moved through redirections and inherited descriptors counted for the file or connection
-behind them. The app's progress steps come from the same events: the ffmpeg with an input is the
-recording, a connection to the AI provider (api.openai.com, openrouter.ai) after it the transcription, one from slivingdoc the
-save.
-
-## Prerequisites
-
-- Go 1.24.6 or later on `PATH`, to bootstrap the Go port
-- [rustup](https://rustup.rs); `web/rust-toolchain.toml` pulls Rust 1.96 and the
-  `wasm32-unknown-unknown` target on first use
-- Node.js 20 or later
-- CMake 3.16 or later and curl, for libgit2 and ffmpeg: the build downloads the
-  [wasi-sdk](https://github.com/WebAssembly/wasi-sdk) 25 into `.tools/` to compile them
-- Chrome or Edge 137 or later, for JavaScript Promise Integration (JSPI)
-
-`wasm-bindgen` is installed into `.tools/` at the version the page's crate needs, and the ffmpeg
-5.1.6 release, checked against its SHA-256, is downloaded there.
-
-## How it fits together
+## How it works
 
 ```
 browser tab
-├─ index.html: xterm.js and a tiny line editor (each line runs as `bash -c`; cd, export, clear, help)
-└─ worker.js: a Web Worker running the WASIX v2 machine (web/src/lib.rs)
-   ├─ console: the terminal, as the machine's /dev/hvc0, while a line runs
-   ├─ /bin/clai: clai built with GOOS=wasix GOARCH=wasm
-   ├─ /bin/npx, /bin/uvx: mcp/launcher.sh, which starts the MCP server ports below
-   ├─ /bin/duckduckgo-mcp-server: mcp/duckduckgo-mcp-server, built like clai
-   ├─ /bin/mcp-server-filesystem: mcp/mcp-server-filesystem, built like clai
-   ├─ /bin/slivingdoc: slivingdoc's release, built like clai with mcp/slivingdoc laid over it
-   ├─ /bin/slivingdoc-git2: libgit2 compiled to WASI, which slivingdoc runs its git operations in
-   ├─ /bin/ffmpeg, /bin/ffprobe: ffmpeg 5.1.6 for wasm32-wasi (audio/ffmpeg)
-   ├─ /usr/local/bin/ffmpeg: audio/ffmpeg.sh, which gives ffmpeg the page's audio as pulse devices
-   ├─ /usr/local/bin/play: audio/play.sh, which plays a sound file in the page
-   ├─ /run/audio/mic, /run/audio/tab: the page's microphone and shared tab audio (web/src/audio.rs)
-   ├─ /bin/bash, /bin/ls, ...: registry packages (WASIX v1), on the kernel's v1 compatibility ABI
-   └─ network: the page's own fetch calls, no proxy and no server: the guest's one-request
-                 host call (web/src/host.rs); sockets are refused (web/src/net.rs)
-                 └─ server.mjs: the page's files, the check's model and its stub site, on 127.0.0.1:5001
+├─ the app (web/www): the yellow pad, Penelope, and the peek under the hood
+└─ Web Worker: one WASIX v2 machine (web/src, kernel from components/wasmer)
+   ├─ /bin: clai, bash, coreutils, rg, fd, ffmpeg, slivingdoc, MCP servers
+   ├─ /run/audio: the browser's mic and shared tab audio, as files ffmpeg records
+   └─ network: each HTTP request becomes the page's own fetch (no proxy, no server)
+        └─ your AI provider, slivingdoc.dev, the clai hub
 ```
 
-| Path | What it is |
+1. **Record.** Start recording runs clai with the `meeting-transcriber` profile from the clai hub.
+   The agent records with ffmpeg from `/run/audio` until you press Stop and summarize.
+2. **Transcribe.** clai sends the recording to your AI provider for a transcript with speaker
+   labels, then names the speakers it recognizes from the voice library.
+3. **File.** The agent writes the summary into `~/notebook` on the machine, which with slivingdoc
+   is a local copy of your hosted notebook. When the run ends, the app moves the recording into
+   your browser, writes the transcript's lines itself, word for word from the transcription's
+   segments, and, with slivingdoc, commits both files to the hosted notebook.
+4. **Review.** The meeting opens with its recording, summary and transcript. You name the
+   speakers, correct lines and save.
+
+The agent comes from the clai hub, so the first time the button reads **Trust the agent and start
+recording**: it trusts that version of the profile in this browser, and every run is pinned to it.
+When the hub publishes a new version, the button asks again before the new one runs. Most controls
+run a command on the machine; [docs/app.md](docs/app.md) lists what each one runs.
+
+### clai
+
+[clai](https://github.com/baalimago/clai) is a command-line AI agent written in Go, with profiles,
+tools and MCP servers. The build compiles it to WASIX with the Go port in `components/go`, and the
+app runs it for every AI step: the meeting-transcriber profile records, transcribes and files a
+meeting; Penelope's own profile, [`web/www/penelope.json`](web/www/penelope.json), answers
+questions; and `clai audio transcribe voices` manages the voice library.
+
+### The terminal
+
+**Peek under the hood → Terminal** is a shell on the machine; a failure note's link also opens it.
+Each line runs in a new bash; try `ls /bin` or `clai help`. `help` lists these commands:
+
+| Command | What it does |
 | --- | --- |
-| `components/go` | The Go port: `GOOS=wasix GOARCH=wasm` on go1.26.10 ([baalimago/go](https://github.com/baalimago/go/tree/poc-clai-via-wasix-wasmersh)) |
-| `components/wasixv2-abi` | The ABI and its code generators, including the Go backend that writes the port's syscall glue. Not needed for the build; it is here to regenerate that glue |
-| `components/wasmer` | The WASIX v2 kernel ([baalimago/wasmer](https://github.com/baalimago/wasmer/tree/poc-clai-via-wasix-wasmersh)) |
-| `components/clai` | clai itself, unchanged |
-| `components/slivingdoc`, `components/libgit2` | slivingdoc v1.3.1 and the libgit2 v1.9.6 it pins, unchanged |
-| `mcp/mcpserver` | The MCP stdio server (JSON-RPC, initialize, tools) the Go ports share |
-| `mcp/mcp-server-filesystem` | A Go port of [@modelcontextprotocol/server-filesystem](https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem) 2.1.0: its 14 tools, arguments and output, confined to the directories it is given |
-| `mcp/duckduckgo-mcp-server` | A Go port of [duckduckgo-mcp-server](https://github.com/nickclyde/duckduckgo-mcp-server) 0.7.0: its tools, arguments, output and `DDG_*` settings |
-| `mcp/slivingdoc` | What slivingdoc needs on wasix: its libgit2 helper and the Go files and `x/sys` that build it for the port (see [slivingdoc and libgit2](#slivingdoc-and-libgit2)) |
-| `mcp/launcher.sh` | `npx` and `uvx`: run the packages that have a port in `/bin`, and say so for the others |
-| `audio/ffmpeg/build.sh` | Builds ffmpeg and ffprobe for wasm32-wasi with the wasi-sdk: audio only, without threads |
-| `audio/play.sh` | `play FILE`: writes the file to `/run/audio/play`, and the page plays it in a player at the bottom right |
-| `audio/ffmpeg.sh` | The `ffmpeg` in `/usr/local/bin`: lists and opens the page's audio inputs as PulseAudio devices, and stops a recording cleanly |
-| `web/src/audio.rs` | `/run/audio`: the page's audio inputs as files that stream while they are open |
-| `web/www/audio.js` | Captures the microphone and a shared screen's or tab's audio for those files |
-| `web/src/lib.rs` | The machine: boots once per page with the CA bundle mounted and clai and the packages in `/bin`, compiles each program once, runs a file as often as asked |
-| `web/src/net.rs`, `web/src/names.rs` | The machine's sockets: name lookups answered with addresses the page hands out, and every connection refused with the reason |
-| `web/src/host.rs`, `web/src/jshttp.rs` | The page as the machine's host: `http-open`, one whole request and its streamed response per descriptor, over the same `fetch` |
-| `web/src/packages.rs` | Installs webc packages as `wasmer run` does: commands in `/bin`, with their `wasi` annotations for v1 programs, and volumes where the package says |
-| `web/packages.txt`, `web/fetch-packages.mjs` | The registry packages, and the script that downloads them to `web/www/packages` |
-| `web/www` | The page, its worker and its line editor |
-| `web/server.mjs` | Serves the page's files and the check's model on one port |
-| `web/check.mjs`, `web/check-fetch.mjs` | The headless checks behind `make check`: what the machine runs, and what its network carries |
+| `cd DIR`, `export KEY=VALUE` | Set the directory and the variables later lines start with (the terminal's own commands, like `help` and `clear`) |
+| `play FILE` | Plays a sound file, such as a recording, in the page (a small program on the machine) |
+| `download FILE...` | Saves files of the machine in your browser's downloads, such as `download ~/notebook/meetings/transcripts/<file>.md` (a small program on the machine) |
+| `clear` | Clears the screen |
 
-Each line runs as a new `bash -c` in the directory the page's `cd` last chose, with what
-`export` set, so `cd` and `export` are the page's own. While a line runs, what you type goes to
-the machine's console, a terminal whose line discipline
-is the kernel's, as on Linux: clai's descriptors 0, 1 and 2 and its `/dev/tty` are that
-terminal, the kernel echoes and edits what you type, `^C` is SIGINT, and the window's size
-reaches the program as the terminal's. Between commands the page's own line editor reads the prompt.
+## Where your data lives
 
-The machine runs in a Web Worker because Chrome compiles and instantiates a module over 8 MB
-(clai is 30 MB) synchronously only off the page's thread. One machine serves every command,
-so what clai writes under `~/.config` stays until the tab closes. Each program compiles once,
-on its first start. Processes take turns on the worker's one thread: one that computes holds
-the others up.
+| What | Where |
+| --- | --- |
+| AI provider key, slivingdoc login, the agent's trust | This browser's local storage for the site, put back on the machine at each load. Each agent run gets the key as an environment variable, and requests go from the browser straight to the provider |
+| Notes (summary and transcript) | Without slivingdoc, this browser (IndexedDB), put back on the machine at `~/notebook/meetings/` at each load; with it, your slivingdoc notebook. slivingdoc keeps a notebook in its hosted space at slivingdoc.dev, which **Connect slivingdoc** signs in to, or in your own S3-compatible bucket (slivingdoc's [self-hosted mode](https://github.com/baalimago/slivingdoc)) |
+| Recordings | This browser only (IndexedDB), under their meeting. The notebook holds text only, so a recording whose notes are gone stays stored but is no longer listed |
+| Voice library | This browser only (IndexedDB). Clips go to your AI provider only inside a transcription's naming requests |
+| Run logs | The newest ten runs, in this browser (IndexedDB), with secrets and the model's words taken out |
+| clai's conversations | The tab's machine only: after a reload, answering the agent about an earlier meeting starts a new conversation |
 
-## What works
+AI providers: OpenAI (paste an API key) and OpenRouter (Sign in with OpenRouter). You connect one
+at a time; **Disconnect** forgets its key so you can connect the other. Your provider bills you for
+what the agent uses.
 
-- `clai h`, `clai help`, `clai version`, `clai confdir` and anything else that only prints.
-- The network: each HTTP request is one host call that the page's `fetch` makes
-  (`web/src/host.rs`). Nothing leaves except what the browser allows, and the guest never
-  terminates TLS, so `export OPENAI_API_KEY=sk-...` then `clai -cm gpt-4.1-mini q hello` makes a
-  live query. See [The network](#the-network) for what a host needs to answer.
-- Interactive prompts: `clai setup`, `clai chat list` and the like read from the terminal, with
-  the kernel editing the line as you type it, and `^C` stops clai.
-- Starting programs: Go's `os/exec` starts them through wasixv2's `spawn` (`posix_spawn` in one
-  call), with pipes, `Dir` and `Env`, and WASIX v1 programs start others as on wasmer's v1
-  runtime, so clai's shell tools and `-add-shell-context` can run `sh -c`, rg, find and git.
-  `make check`'s bash rows (pipes, `ls /bin`, `cd`) pass in headless Chromium with the
-  registry's packages, and so do clai's `cmd` tool and `-add-shell-context`, each running
-  `sh -c`. A shell context's first variable starts bash, which compiles first, so give it a
-  `timeout_ms` of some seconds rather than the 100 ms default.
+## Components
 
-## The network
+| Path | Role |
+| --- | --- |
+| `web/www` | The app: plain HTML, CSS and JavaScript modules with no build step, the worker that runs the machine, and Penelope's profile and app reference |
+| `web/src` | The machine (Rust, compiled to wasm): boots the WASIX v2 kernel, installs `/bin`, streams `/run/audio`, and turns the machine's HTTP into the page's `fetch` |
+| `web/profiles` | The source of the agent's clai profile, published to the clai hub as `cchub:baalimago/meeting-transcriber` |
+| `web/*.mjs`, `web/packages.txt` | The local server, the registry package list and fetcher, the headless checks, and build helpers |
+| `mcp/` | Go ports of MCP servers: the filesystem server the meeting agent starts, and DuckDuckGo for profiles that search, such as `cchub:clai/researcher`; slivingdoc's build for the machine with its libgit2 helper, and `launcher.sh`, the machine's `npx` and `uvx` |
+| `audio/` | The ffmpeg build (audio only, for wasm32-wasi), the `ffmpeg` wrapper that offers the page's audio as PulseAudio devices, and `play` |
+| `machine/` | Small wrappers in `/usr/local/bin`: `download`, and a `cp` that works where WASI has no file modes |
+| `edge/` | The static-site configuration for Wasmer Edge, with the cross-origin isolation headers the page needs |
+| `docs/` | How it works in depth |
+| `worklogs/` | Design and implementation logs of larger changes |
+| `components/clai` | [clai](https://github.com/baalimago/clai), the AI agent |
+| `components/go` | Go with a `GOOS=wasix GOARCH=wasm` port, go1.27.3 (fork: [baalimago/go](https://github.com/baalimago/go)) |
+| `components/wasmer` | Wasmer, whose WASIX v2 kernel (`lib/wasixv2`) the machine runs on (fork: [baalimago/wasmer](https://github.com/baalimago/wasmer)) |
+| `components/wasixv2-abi` | The WASIX v2 ABI and its code generators, to regenerate the Go port's system call glue; the build does not need it ([baalimago/wasixv2-abi](https://github.com/baalimago/wasixv2-abi)) |
+| `components/slivingdoc` | [slivingdoc](https://github.com/baalimago/slivingdoc) 1.3.1, the notebook's sync CLI and MCP server |
+| `components/libgit2` | [libgit2](https://github.com/libgit2/libgit2) 1.9.6, slivingdoc's git engine, compiled to WASI |
 
-The machine's traffic goes out as the page's own `fetch` calls: no proxy behind the page, and no
-server of any kind, so a copy of the page served as files runs clai against a model. Every run
-has `WASIX_HTTP=host` (`web/www/worker.js`), so Go's `net/http` hands each `http` or `https`
-request to the host as data (`components/go/src/net/http/wasix_http.go`), and the page's `fetch`
-makes it with the browser's TLS (`web/src/host.rs`). A program that dials a socket itself, or a
-line with `WASIX_HTTP=socket`, is refused: the page has no socket to give, and the terminal says
-so (`web/src/net.rs`). Name lookups still answer, with addresses in 198.18.0.0/15 that the page
-hands out (`web/src/names.rs`), for programs that resolve a name before they fetch.
+The `components/` entries are git submodules; `go` and `wasmer` are forks of the upstream projects.
 
-The host call is one function in the guest ABI (`http-open`,
-`components/wasixv2-abi/wit/ext.wit`): the request as `u32` counts and then the bytes — method,
-URL, header count and pairs, body — and the response the same shape with a status in front. The
-guest reads it as a descriptor: the head, then the body, then 0. TLS is Chrome's, so nothing is
-plaintext on any wire; the host never follows a redirect, and refuses `host`, `content-length`,
-`connection`, `user-agent` and `accept-encoding`, which the browser sets or refuses itself. A
-runtime without the call answers `ENOSYS`, and the port's transport then falls back to a socket,
-which a native runtime has.
+## Run it locally
 
-The page must be allowed by the target: a cross-origin request is a CORS request, so a
-provider must answer the page's origin for a preflight. This is the target's work, not the
-page's. `make check` runs `web/check-fetch.mjs`, which drives a model on the page's own origin
-(`web/server.mjs`, `/test/v1`) through the host call, and shows that a socket is refused with
-the reason. It also runs `web/check.mjs`, whose `slivingdoc`
-rows sign in and out against the stub site `web/server.mjs` serves on the page's own port: no
-cloud account, and no CORS request.
+### Prerequisites
 
-So a live query to an OpenAI-compatible endpoint with the visitor's own key works today, streamed
-into the terminal, with nothing configured first, and `https` reaches it whatever the page's
-origin holds:
+- Go 1.24.6 or later, to bootstrap the Go port
+- [rustup](https://rustup.rs) (the toolchain in `web/rust-toolchain.toml` installs on first use)
+- Node.js 20 or later
+- CMake 3.16 or later, make, git, curl and xz
+- A C compiler for your computer (`cc`: gcc, clang or Xcode's command line tools), which Rust
+  links its build scripts with
+- Chrome or Microsoft Edge 137 or later
 
-```
-OPENAI_API_KEY=sk-… clai -cm gpt-4.1-mini query "what is wasix?"
-```
-
-## MCP servers
-
-clai profiles start MCP servers with `npx` (Node.js) and `uvx` (Python), and the machine has
-neither runtime that could run them:
-
-- Python: the registry's `python/python` 3.13 runs, but MCP servers need the `mcp` package,
-  whose dependencies (`pydantic-core`, `rpds-py`, `cryptography`) are native extensions. The
-  [WASIX index](https://python-registry.wasix.org/) has them as shared libraries, and the
-  kernel's WASIX v1 layer refuses `dlopen`.
-- Node.js: the registry's `wasmer/edgejs` has `node`, `npm` and `npx`, but no JavaScript
-  engine of its own: it imports N-API from its host (wasmerio/napi has a browser backend for
-  wasmer-js), which the WASIX v2 machine does not provide yet.
-
-So `npx` and `uvx` are `mcp/launcher.sh`, which accepts their usual forms (`npx -y pkg@1.2.3
-args`, `uvx pkg==1.2.3 args`, `--from`) and runs the package's port from `/bin`, ignoring the
-version. `cchub:clai/researcher` and `cchub:baalimago/meeting-transcriber` start:
-
-| Server | Command | Here |
-| --- | --- | --- |
-| ddg | `uvx duckduckgo-mcp-server==0.7.0` | Runs the Go port: `search`, `fetch_content` and `expand_link` give the Python server's output, and a live search answers from the page |
-| slivingdoc | `npx -y slivingdoc@1.3.1 serve ...` | Runs slivingdoc 1.3.1 itself, with libgit2 1.9.6 in a helper process (below) |
-| Filesystem | `npx -y @modelcontextprotocol/server-filesystem /tmp/ .` | Runs the Go port: the tools give the Node server's text, diffs included, and refuse paths, symlinks too, outside the directories given. It takes its directories only from its arguments, not from MCP Roots |
-
-The Go port has no threads, so a read that blocks in the kernel would stop every goroutine. The
-port polls a descriptor outside the netpoller (a terminal, a pipe) until it is readable, sleeping
-the goroutine in between, and only then reads it. The ddg port, which predates that, also puts
-stdin in the netpoller (`mcp/duckduckgo-mcp-server/stdin_unix.go`).
-
-## Recording meetings
-
-clai's `audio_sources`, `audio_record` and `audio_transcribe` tools, which the
-[meeting-transcriber](https://www.clai.chat/hub/baalimago/meeting-transcriber/) profile uses,
-find inputs with `ffmpeg -sources pulse`, record with `ffmpeg -f pulse -i NAME`, and stop ffmpeg
-with SIGINT. In the page:
-
-| Input | pulse name | What it records |
-| --- | --- | --- |
-| `/run/audio/mic` | `browser-mic` | The browser's default microphone |
-| `/run/audio/tab` | `browser-tab.monitor` | The audio of the screen or tab shared from the checklist. Listed only while something is shared, so clai's `audio_sources` says `system_audio: unavailable` before |
-| `/run/audio/devN` | `browser-devN`, or `browser-devN.monitor` | Each other audio input of the browser's. On Linux, PipeWire and PulseAudio offer each output's "Monitor of ..." as one, which holds what the computer plays, a meeting app's audio included: it is a sink's monitor here too, and the first is the default sink |
-
-The page asks for the microphone when it loads, which is what lets the browser name its audio
-inputs, and adds each to `/run/audio`; `/run/audio/devices` lists them, a `name<TAB>label` line
-each. clai's `audio_sources` then sees them all, and its agent picks which to record: by default
-by the meeting, the default microphone and the default sink's monitor, mixed into one recording.
-A web page gets what the computer plays only from a screen or tab share, or from an input the
-OS offers as a loopback: a monitor on Linux, Stereo Mix on Windows when it is enabled, a virtual
-device such as BlackHole on macOS. Chrome and Chromium leave monitor sources out of their inputs on Linux, by design. A remapped copy of
-the monitor, which is not one, is listed; named "Monitor of ...", it is a monitor here:
+The build runs cargo from `$CARGO_HOME/bin` (`~/.cargo/bin` by default); set `CARGO_HOME` if your
+rustup keeps it elsewhere.
 
 ```sh
-pactl load-module module-remap-source master="$(pactl get-default-sink).monitor" \
-  source_name=meeting_audio source_properties='device.description="Monitor of System Audio"'
+git clone https://github.com/baalimago/penelope.ink
+cd penelope.ink
+make dev
 ```
 
-The page adds it when it appears, with no reload. Firefox lists monitors as they are.
+`make dev` clones the submodules that are missing, builds everything, serves the page on
+http://localhost:5001 and opens it in your browser (`PORT` changes the port). The first build takes a few minutes and downloads its toolchains into `.tools/`; later builds
+take seconds. It serves until you press Ctrl-C; if no browser opens, go to http://localhost:5001
+yourself. Then connect an AI provider in the app, and keep the tab open while a meeting records
+and transcribes.
 
-The computer's audio, by browser (a monitor input, where there is one, is used instead and needs
-no share):
+### Build and test
 
-| Browser | Share the whole screen | Share a tab |
-| --- | --- | --- |
-| Chrome, Edge on Windows and ChromeOS | carries what the computer plays ("Also share system audio") | carries the tab's audio |
-| Chrome on macOS | carries it from Chrome 141 on macOS 14.2 and later (reported, not in Chrome's notes); no audio before | carries the tab's audio |
-| Chrome on Linux | depends on the version: when the picker offers no system audio, share the tab that plays, or add the monitor above | carries the tab's audio |
-| Firefox | no audio | no audio; on Linux the monitor inputs carry it |
-| Safari | no audio | no audio |
+| Command | What it does |
+| --- | --- |
+| `make build` | Builds everything without serving |
+| `make check` | Runs the unit tests and the end-to-end checks in headless Chromium |
+| `cd web && npm ci && node --test units.test.mjs` | Runs only the unit tests; needs no build or browser |
+| `make clean` | Removes the build output and downloaded toolchains |
 
-Browsers ask for a share each time and only from a click. For debugging, Chromium skips the
-prompts with `--auto-select-desktop-capture-source="Entire screen"` (or
-`--auto-select-tab-capture-source-by-title=YouTube`) and `--use-fake-ui-for-media-stream`, in a
-throwaway profile (`--user-data-dir=$(mktemp -d)`); on Linux the monitor above needs only the
-microphone's permission, which the browser keeps.
+`make` never moves a submodule that is already checked out.
+[docs/development.md](docs/development.md) has every target and what the checks cover.
 
-The page captures an input only while ffmpeg has its file open, at 48 kHz on one `AudioContext`,
-so a mic and tab recording stay in step. `/usr/local/bin/ffmpeg` (`audio/ffmpeg.sh`) answers
-`-sources pulse` and `-sinks pulse` with those names and labels and turns `-f pulse -i NAME` into the raw
-file. On SIGINT it writes to the input files, which ends them, so ffmpeg reads to the end and
-finishes the WAV as it would on SIGINT: this ffmpeg is plain WASI and cannot catch signals.
+## Hosting it on Wasmer Edge
 
-`play /tmp/t.wav` plays a recording back: whatever is written to `/run/audio/play` goes, once the
-file is closed, to a player in the page, and the browser decodes it.
-
-ffmpeg is 5.1.6 built with the wasi-sdk for wasm32-wasi, without threads and audio only (WAV, MP3,
-AAC/M4A, Ogg/Opus/Vorbis, FLAC, Matroska in; WAV and FLAC out; the filters clai uses). The
-registry's `wasmer/ffmpeg` is a threaded build of a 2023 development snapshot, which deadlocks on
-the v2 kernel once its decoder threads start, and ffmpeg 6.0 and later need threads.
-
-So, with an OpenAI key for the transcription (`audioConfig.json` in `clai confdir` picks the
-model):
+To run your own copy, build it from a clone (see [Run it locally](#run-it-locally)) and deploy it
+under your own Wasmer account; fork [the repository](https://github.com/baalimago/penelope.ink)
+first if you want to keep changes. Penelope is a static site; it needs only the two cross-origin
+isolation headers that `edge/settings/config.toml` sends.
 
 ```sh
-export OPENAI_API_KEY=sk-...
-mkdir -p ~/meetings && cd ~/meetings
-clai -profile-path cchub:baalimago/meeting-transcriber -query-summary query "Daily sync"
+make dist        # the site in dist/
+make check-dist  # dist/ in headless Chromium, with only the headers Edge sends
+make deploy      # check-dist, then wasmer deploy
 ```
 
-clai asks you to trust the profile first (or `clai profiles trust cchub:baalimago/meeting-transcriber`),
-starts slivingdoc and the filesystem server (on the directory you run it in) for the notes, and
-Enter stops the recording. The recording and the files clai
-writes are in the tab's memory only.
+`make deploy` needs the `wasmer` CLI (`curl https://get.wasmer.io -sSfL | sh`) and `wasmer login`
+(or `WASMER_TOKEN`, a token from your Wasmer account). `OWNER=<your Wasmer user or namespace>` deploys
+without asking; `name:` in `edge/app.yaml` is the app's name in that account.
 
-The profile's source is `web/profiles/meeting-transcriber.json`. A change to it goes to the Hub
-as the next version with `clai profiles publish web/profiles/meeting-transcriber.json -name
-meeting-transcriber -note '<what changed>'`, after `clai cloud login`; each browser then trusts
-the new version once.
+What changes on your own address:
 
-### slivingdoc and libgit2
+- **slivingdoc:** slivingdoc.dev accepts sign-ins only from the addresses it allows, so on yours
+  the notes stay in this browser ([docs/mcp-and-slivingdoc.md](docs/mcp-and-slivingdoc.md)). OpenAI
+  and OpenRouter answer any address.
+- **The agent:** the app runs `cchub:baalimago/meeting-transcriber` (`profile` in
+  `web/www/minutes.js`). To run your own, publish it under your clai hub handle
+  ([docs/audio.md](docs/audio.md)) and change that line.
+- **The source link:** point `#source-link` in `web/www/index.html` at your fork.
 
-slivingdoc (`components/slivingdoc`, at its v1.3.1 tag) is Go, and its git engine is libgit2
-through cgo, which the Go port does not have. Its `internal/git2` package is the only libgit2
-boundary: twenty seam functions, one per libgit2 operation. So the machine runs libgit2 in a
-process of its own:
+## Limits
 
-- `mcp/slivingdoc/git2/helper.c` is `/bin/slivingdoc-git2`: libgit2 1.9.6
-  (`components/libgit2`), compiled to WASI with the wasi-sdk and linked into a small program
-  that runs one operation per request on stdin and answers on stdout. It runs on the kernel's
-  WASIX v1 layer, like bash. `mcp/slivingdoc/git2/wasi/` has the few POSIX headers and calls
-  libgit2 names that WASI leaves out, for paths slivingdoc never takes (network transports,
-  child processes); they fail as a host without them would.
-- `mcp/slivingdoc/native_wasix.go` takes the place of slivingdoc's cgo file on wasix: the same
-  seam functions, each one request to the helper, which it starts at libgit2's init.
-- `mcp/slivingdoc/stdin_wasix.go` puts slivingdoc's stdin in the netpoller, as above.
-- `mcp/slivingdoc/wasix.sh` lays those files over the checkout with `go build -overlay`, so it
-  stays at the release, and gives the build a copy of `golang.org/x/sys` that builds for wasix
-  (its `unix` package is linux's, and the port is linux/loong64's types with riscv32's
-  system call numbers, so the loong64 files serve, renumbered).
+- It needs Chrome or Microsoft Edge 137 or later; Firefox and Safari cannot run the machine.
+- Recording the call's sound needs a tab or screen share with audio, which depends on the browser
+  and system ([docs/audio.md](docs/audio.md)).
+- An Android phone needs Chrome or Microsoft Edge 137 or later too, and records the mic only: phone
+  browsers cannot share a tab. iPhone and iPad browsers all use Safari's engine and cannot run it.
+- One meeting records at a time; others can transcribe meanwhile.
+- Two AI providers: OpenAI and OpenRouter.
+- Files on the machine are gone when the tab reloads or closes; notes kept without slivingdoc stay
+  in this browser only, so clearing the site's data removes them.
+- It needs the network: there is no offline mode.
+- `npx` and `uvx` run only the MCP servers that have a port in `/bin`; there is no Node.js or
+  Python.
+- In the terminal, each line is a new bash, so shell variables and functions do not carry over,
+  and `^C` ends clai without letting it clean up.
 
-slivingdoc's own `internal/git2` tests pass through the helper, natively and in the page,
-except two that cannot: libgit2 here is built without threads, and a test that reads the
-source tree for `os/exec` finds the helper's. To run them natively, build the helper with the
-host's compiler against a native libgit2 and run
-`CGO_ENABLED=0 go test -tags git2helper ./internal/git2/` in a checkout with
-`native_wasix.go` copied in and the helper on `PATH`.
+## Documentation
 
-slivingdoc keeps the notebook in its hosted storage or an S3 bucket. Without a credential,
-`serve` signs in on the first tool call: it prints an approval link on its stderr and waits.
-`slivingdoc login` in the page does the same up front, and the login it stores serves the
-servers clai starts afterwards. With a credential, pull, commit, log and slivingdoc's three-way
-merges, conflict markers included, run in the page: two writers in it, against slivingdoc's
-reference storage server (`internal/httpstore/gatewaytest`) also in it, pull, commit and
-conflict as they do natively.
+| Page | What it covers |
+| --- | --- |
+| [docs/architecture.md](docs/architecture.md) | The machine in the tab: worker, terminal, loading, network, the peek, and the files of `web/` |
+| [docs/app.md](docs/app.md) | What each control runs, the agent and AI providers, the notebook, background runs, the voice library |
+| [docs/audio.md](docs/audio.md) | Audio inputs, sharing the computer's sound by browser, ffmpeg, `play` and `download` |
+| [docs/mcp-and-slivingdoc.md](docs/mcp-and-slivingdoc.md) | `npx`, `uvx` and the MCP server ports; slivingdoc and libgit2 |
+| [docs/development.md](docs/development.md) | Prerequisites, make targets, checks, hosting and the installable app |
+| [web/www/penelope-app.md](web/www/penelope-app.md) | The app's screens and controls, as Penelope knows them |
+| `components/clai/architecture/` | clai's own design notes, such as `audio.md` for transcription and known voices |
+| `components/wasmer/lib/wasixv2/DESIGN.md` | The WASIX v2 kernel |
 
-## What doesn't work yet
+## License
 
-- Each line is a new bash, so shell variables, functions and jobs do not outlive it; `cd` and
-  `export` are the page's. An interactive bash is the next step.
-- Guest threads run on the worker's one thread, so rg and fd search with one core.
-- `^C` kills clai rather than letting it clean up: the Go port cannot deliver signals to Go
-  code yet, so `os/signal` never hears of SIGINT and its default action ends the process.
-- Files exist only in memory, for the life of the tab, recordings too.
-- Live transcription with a real key is untested here: this sandbox's proxy re-signs TLS. The
-  test transcription model runs in `make check`.
-- ffmpeg has no MP3 encoder, which clai's calibrated diarization path uses for recordings over
-  25 MB with a `*diarize*` model.
-- `npx` and `uvx` run only the ports in `/bin`: there is no Node.js or Python package
-  installation (see [MCP servers](#mcp-servers)).
-- A slivingdoc login is kept in the browser's storage, so a reloaded page puts it back; Sign out
-  revokes the key at the site and forgets it. A page whose site does not allow its origin cannot
-  sign in at all: the site's CORS headers are its owner's work.
-- `fetch_content` refuses addresses that are not public, as the Python server does, so a
-  network whose DNS answers with private addresses (a VPN's fake IPs in 198.18.0.0/15, say)
-  needs `DDG_ALLOW_PRIVATE_URLS=1`.
+Penelope is under the [MIT license](LICENSE). The submodules in `components/` keep their own licenses.

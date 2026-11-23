@@ -1,3 +1,3 @@
-module github.com/baalimago/clai-in-wasmer-sh-poc/mcp/mcpserver
+module github.com/baalimago/penelope.ink/mcp/mcpserver
 
 go 1.24.0

@@ -101,6 +101,11 @@ if [ ${#inputs[@]} -eq 0 ]; then
   exec /bin/ffmpeg "${args[@]}"
 fi
 
+# Held open here and inherited by ffmpeg: a write ends an input only while it is open (web/src/audio.rs).
+for file in "${inputs[@]}"; do
+  exec {held}<"$file"
+done
+
 stop() {
   for file in "${inputs[@]}"; do
     printf end > "$file"

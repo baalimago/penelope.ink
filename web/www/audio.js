@@ -98,12 +98,13 @@ export class AudioInputs {
     return list;
   }
 
-  // What can be recorded: the microphone's label, and where the computer's audio comes from.
+  // What can be recorded: the microphone's label, and where the computer's audio comes from, with
+  // the source ffmpeg records it as (audio/ffmpeg.sh).
   access() {
-    const monitor = [...this.devices.values()].find((d) => d.label.startsWith("Monitor of "));
+    const monitor = [...this.devices].find(([, d]) => d.label.startsWith("Monitor of "));
     const computer = this.shared
-      ? { label: this.shared.label, via: "share" }
-      : monitor ? { label: monitor.label, via: "monitor" } : null;
+      ? { label: this.shared.label, via: "share", source: "browser-tab.monitor" }
+      : monitor ? { label: monitor[1].label, via: "monitor", source: `browser-${monitor[0]}.monitor` } : null;
     return { mic: this.mic, computer };
   }
 
@@ -318,7 +319,9 @@ const clean = (label) => label.replace(/[\t\n]/g, " ");
 
 // The OS, browser engine, browser name and major version `navigator` reports.
 export function platformOf({ userAgent = "", userAgentData }) {
-  const os = /CrOS/.test(userAgent) ? "chromeos"
+  // A phone first: Android's agent also says Linux, an iPhone's also says Mac OS X.
+  const os = /Android/.test(userAgent) ? "android" : /iPhone|iPad|iPod/.test(userAgent) ? "ios"
+    : /CrOS/.test(userAgent) ? "chromeos"
     : /Windows/.test(userAgent) ? "windows"
     : /Macintosh|Mac OS X/.test(userAgent) ? "mac"
     : /Linux|X11/.test(userAgent) ? "linux" : "other";
@@ -347,6 +350,9 @@ export async function withOsVersion(platform, { userAgentData }) {
   }
 }
 
+// A phone's browser can share no screen or tab, so it records the mic alone.
+export const isPhone = ({ os }) => os === "android" || os === "ios";
+
 const SCREEN = "Share your screen with \"Share system audio\" on, or the tab with your call.";
 const TAB = "Share the tab with your call.";
 const atLeast = ([major, minor], [wantMajor, wantMinor]) => major > wantMajor || (major === wantMajor && minor >= wantMinor);
@@ -355,6 +361,7 @@ const atLeast = ([major, minor], [wantMajor, wantMinor]) => major > wantMajor ||
 // and the words of the button that asks for a share, or null where a share carries no sound.
 // `monitor` is the label of an input that already carries the computer's sound, if there is one.
 export function audioLimits({ os, browser, name = "This browser", version, osVersion }, monitor = null) {
+  if (isPhone({ os })) return { share: null, text: "A phone records only your mic, not another app's sound: put the call on speaker, or record it on a computer." };
   if (monitor) {
     return { share: browser === "chromium" ? "Share a tab" : null, text: `Your computer's sound comes in through ${monitor}: nothing to share.` };
   }

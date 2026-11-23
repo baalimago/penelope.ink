@@ -1,0 +1,27 @@
+/* The pop-out window (popout.js): a post-it, a row for each run. */
+
+@font-face { font-family: Caveat; font-weight: 400; font-display: swap; src: url("./node_modules/@fontsource/caveat/files/caveat-latin-400-normal.woff2") format("woff2"); }
+@font-face { font-family: Caveat; font-weight: 700; font-display: swap; src: url("./node_modules/@fontsource/caveat/files/caveat-latin-700-normal.woff2") format("woff2"); }
+
+html, body { margin: 0; background: #fff5b4; }
+body { color: #3d3f44; font: 20px/1.2 Caveat, "Comic Sans MS", cursive; }
+[hidden] { display: none !important; }
+ol { list-style: none; margin: 0; padding: 4px 14px; }
+li { padding: 6px 0; border-bottom: 1.5px dashed #e0cf7a; }
+li:last-child { border-bottom: 0; }
+li.empty { color: #8a7f68; }
+.line { display: flex; align-items: center; gap: 10px; min-height: 26px; }
+button.line { width: 100%; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; font-size: 23px; }
+.state, .detail { white-space: nowrap; color: #6b6658; }
+.detail { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 18px; }
+.gauge + .detail { flex: 0 1 auto; }
+.stopped .detail { white-space: normal; }
+.recording .state, .stopped .state, .recording .detail { color: #c0392b; font-weight: 700; }
+.filed .state { color: #3d3f44; font-weight: 700; }
+.wave { flex: 1; display: flex; align-items: center; gap: 1.5px; height: 24px; overflow: hidden; }
+.wave span { flex: 0 0 2px; background: #555; border-radius: 1px; opacity: .8; }
+.gauge { flex: 1; min-width: 48px; height: 12px; border: 1.5px solid #555; border-radius: 2px 4px 3px 2px; }
+.gauge i { display: block; height: 100%; width: calc(var(--p, 0) * 100%); background: repeating-linear-gradient(-45deg, #555 0 1.5px, transparent 1.5px 6px); }
+.stop { padding: 0 12px; border: 0; border-radius: 2px; background: #c0392b; color: #fff; font: 700 19px/26px Caveat, cursive; cursor: pointer; }
+.stop:disabled { opacity: .5; cursor: default; }

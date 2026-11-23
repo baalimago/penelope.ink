@@ -1,4 +1,4 @@
-# `make poc` builds the Go port, clai and the MCP server ports for it, slivingdoc with libgit2,
+# `make dev` builds the Go port, clai and the MCP server ports for it, slivingdoc with libgit2,
 # and the page's WASIX v2 machine, downloads the registry packages the machine's /bin holds, then serves the page and
 # opens it. See README.md for what each piece is.
 
@@ -16,16 +16,13 @@ RUSTUP_HOME ?= $(if $(wildcard $(HOME)/.rustup/toolchains/*),$(HOME)/.rustup,$(H
 CARGO := $(CARGO_HOME)/bin/cargo
 export CARGO_HOME RUSTUP_HOME
 
-.PHONY: poc serve check build dist check-dist deploy packages submodules clean FORCE
+.PHONY: dev check build dist check-dist deploy packages submodules clean FORCE
 
 # The page's own crate needs Rust; say so in words a first-time reader can act on.
 CARGO_MISSING = @test -x $(CARGO) || { echo "no cargo at $(CARGO): install rustup, see Prerequisites in README.md"; exit 1; }
 
-poc: build
+dev: build
 	cd $(WEB) && node server.mjs --open
-
-serve: build
-	cd $(WEB) && node server.mjs
 
 # Headless: runs `clai h`, `clai help`, shell lines and an MCP server in the page and checks what
 # they print.
@@ -37,8 +34,8 @@ build: $(WWW)/clai.wasm $(WWW)/bin/index.json $(WWW)/ca-certificates.crt $(WWW)/
 
 # The page as a static site for Wasmer Edge, in dist/: edge/'s wasmer.toml, app.yaml and
 # static-web-server settings, and in dist/public the page, what it loads from node_modules (the
-# packages web/server.mjs serves) and nothing of the check's. `cd dist && wasmer deploy` puts it
-# on Edge.
+# packages web/server.mjs serves) and nothing of the check's, stamped with its version so an open
+# page offers a reload once a newer one is up. `cd dist && wasmer deploy` puts it on Edge.
 DIST := $(CURDIR)/dist
 NODE_PACKAGES := @xterm @fontsource marked
 
@@ -49,24 +46,32 @@ dist: build
 	cp -R $(WWW)/. $(DIST)/public/
 	cd $(WEB)/node_modules && cp -R $(NODE_PACKAGES) $(DIST)/public/node_modules/
 	node $(WEB)/compress-dist.mjs $(DIST)/public
+	node $(WEB)/stamp-dist.mjs $(DIST)/public
 	@du -sh $(DIST)/public
 
 # The dist as Edge serves it, in headless Chromium (web/check-dist.mjs). DIST_URL=... checks a
 # site that is already up instead, such as the deployed app.
 check-dist: dist
-	cd $(WEB) && node check-dist.mjs
+	cd $(WEB) && npx playwright install chromium && node check-dist.mjs
 
 # `make deploy` ships the site: check-dist rebuilds dist from the tree and checks it, then
-# wasmer deploy pushes it, asking for the owner on the first deploy and writing it to app.yaml.
+# wasmer deploy pushes it. dist/ starts from edge/ each time, so the owner an earlier deploy wrote
+# into dist/app.yaml is gone: OWNER=<user or namespace> names it, else wasmer deploy asks.
+OWNER ?=
 deploy: check-dist
 	@command -v wasmer >/dev/null || { echo "no wasmer on PATH: see Hosting it on Wasmer Edge in README.md"; exit 1; }
-	cd $(DIST) && wasmer deploy
+	cd $(DIST) && wasmer deploy $(if $(OWNER),--owner $(OWNER))
 
+# `make submodules` clones each submodule that is not checked out yet, at the commit the
+# parent records. One that is checked out is never touched: it stays on its branch and
+# commit until you move it yourself (`git submodule update` by hand, or git in it).
 # The page's crate builds against components/wasmer, whose workspace needs two of its own
 # submodules; its test suites' submodules stay out.
+clone-missing = for p in $$(git -C $(1) submodule status $(2) | sed -n 's/^-[0-9a-f]* \([^ ]*\).*/\1/p'); do \
+	git -C $(1) submodule update --init --depth 1 -- "$$p" || exit 1; done
 submodules:
-	git submodule update --init --depth 1
-	git -C components/wasmer submodule update --init --depth 1 lib/wasixv2/codegen lib/napi
+	@$(call clone-missing,.,)
+	@$(call clone-missing,components/wasmer,lib/wasixv2/codegen lib/napi)
 
 $(GO): | submodules
 	cd components/go/src && ./make.bash
@@ -131,8 +136,9 @@ $(WWW)/bin/launcher.sh: mcp/launcher.sh
 
 # Wrappers in /usr/local/bin, which comes before /bin on PATH: ffmpeg gives /bin/ffmpeg the
 # page's audio inputs as PulseAudio devices (audio/ffmpeg.sh); play plays sound files in the page
-# (audio/play.sh).
-WRAPPERS := ffmpeg play
+# (audio/play.sh); cp drops the mode preservation /bin/cp cannot do on WASI (machine/cp.sh);
+# download saves a file of the machine as a download of the browser's (machine/download.sh).
+WRAPPERS := ffmpeg play cp download
 
 # ffmpeg and ffprobe for wasm32-wasi, built with the wasi-sdk from an ffmpeg release: audio only
 # and without threads (audio/ffmpeg/build.sh). Both are in /bin.
@@ -170,6 +176,10 @@ $(WWW)/bin/ffmpeg.wasm $(WWW)/bin/ffprobe.wasm: $(FFMPEG_BUILD)/ffmpeg
 	cp $(FFMPEG_BUILD)/$(basename $(@F)) $@
 
 $(WWW)/bin/%.sh: audio/%.sh
+	@mkdir -p $(@D)
+	cp $< $@
+
+$(WWW)/bin/%.sh: machine/%.sh
 	@mkdir -p $(@D)
 	cp $< $@
 

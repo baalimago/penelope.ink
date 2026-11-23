@@ -1,4 +1,5 @@
-# `wasmer deploy` in dist/ asks for the owner on the first deploy and writes it here.
+# `make deploy OWNER=<user>` names the owner; dist/ is rebuilt from edge/ on every deploy, so the
+# owner `wasmer deploy` writes into dist/app.yaml does not last.
 kind: wasmer.io/App.v0
 name: clai-minutes
 package: .

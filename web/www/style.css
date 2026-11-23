@@ -8,6 +8,12 @@
 @font-face { font-family: "JetBrains Mono"; font-weight: 500 700; font-display: swap; src: url("./node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-500-normal.woff2") format("woff2"); }
 
 :root {
+  /* The user's blue pen; with a red ring at its tip over what a click does. */
+  --pen-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'><g transform='translate(3 29) rotate(-45) scale(.29 .42)'><path d='M-5 0L16-6H98V-8.5H122L126 0L122 6H16Z' fill='white' opacity='.85'/><path d='M0 0C3.5-.5 9-3 16.5-3.6V3.6C9 3 3.5.5 0 0Z' fill='%23d2b16b' stroke='%236e5427' stroke-width='.6'/><path d='M1.2 0H11.4' stroke='%234d3b18' stroke-width='.8'/><path d='M15.5-3.5 29.8-4.1V4.1L15.5 3.5Z' fill='%231a1e27'/><rect x='29.8' y='-4.3' width='1.6' height='8.6' fill='%23c5a263'/><rect x='31.4' y='-4.5' width='56.6' height='9' fill='%23262d3d'/><path d='M88-5H120A4 5 0 0 1 120 5H88Z' fill='%231d2330'/><rect x='88' y='-5.1' width='2.4' height='10.2' fill='%23c5a263'/><path d='M99.6-6.9H119.2Q120.6-6.9 120.6-5.5V-4.8H99.6Z' fill='%23c5a263'/><rect x='33' y='-3' width='53' height='1.4' fill='%235d6984'/></g></svg>") 3 29, auto;
+  --pen-tap-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'><circle cx='3' cy='29' r='2.8' fill='none' stroke='%23c0392b' stroke-width='1.2'/><g transform='translate(3 29) rotate(-45) scale(.29 .42)'><path d='M-5 0L16-6H98V-8.5H122L126 0L122 6H16Z' fill='white' opacity='.85'/><path d='M0 0C3.5-.5 9-3 16.5-3.6V3.6C9 3 3.5.5 0 0Z' fill='%23d2b16b' stroke='%236e5427' stroke-width='.6'/><path d='M1.2 0H11.4' stroke='%234d3b18' stroke-width='.8'/><path d='M15.5-3.5 29.8-4.1V4.1L15.5 3.5Z' fill='%231a1e27'/><rect x='29.8' y='-4.3' width='1.6' height='8.6' fill='%23c5a263'/><rect x='31.4' y='-4.5' width='56.6' height='9' fill='%23262d3d'/><path d='M88-5H120A4 5 0 0 1 120 5H88Z' fill='%231d2330'/><rect x='88' y='-5.1' width='2.4' height='10.2' fill='%23c5a263'/><path d='M99.6-6.9H119.2Q120.6-6.9 120.6-5.5V-4.8H99.6Z' fill='%23c5a263'/><rect x='33' y='-3' width='53' height='1.4' fill='%235d6984'/></g></svg>") 3 29, pointer;
+  /* The pointer: the system's, until the user picks up the pen to doodle (sketch.js). */
+  --pen: default;
+  --pen-tap: pointer;
   --ink: #16181d;
   --quiet: #4a5060;
   --faint: #6b7080;
@@ -28,10 +34,14 @@
 
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
-body { display: flex; flex-direction: column; background: var(--paper); color: var(--ink); font: 14px/1.5 var(--sans); }
+body { display: flex; flex-direction: column; background: var(--paper); color: var(--ink); font: 14px/1.5 var(--sans); cursor: var(--pen); }
+:is(input:not([type="checkbox"], [type="radio"], [type="range"]), textarea, [contenteditable="true"]) { cursor: var(--pen-image); }
+body.doodling { --pen: var(--pen-image); --pen-tap: var(--pen-tap-image); }
+/* Penelope ate the pen (penelope.js pounce). */
+body.pen-eaten, body.pen-eaten * { cursor: none !important; }
 code, pre { font-family: var(--mono); font-size: 12.5px; }
-button { font: inherit; cursor: pointer; }
-button:disabled { cursor: default; opacity: .6; }
+button { font: inherit; cursor: var(--pen-tap); }
+button:disabled { cursor: var(--pen); opacity: .6; }
 input, textarea { font: inherit; padding: 10px 12px; border: 1px solid #d5d7dd; border-radius: 8px; background: #fff; color: var(--ink); min-width: 0; }
 a { color: var(--accent); }
 a:hover { color: #1e3fb0; }
@@ -58,7 +68,9 @@ a:hover { color: #1e3fb0; }
 
 .sidebar { flex: 0 0 260px; padding: 20px 16px; border-right: 1px solid var(--line); background: #fbfbf9; display: flex; flex-direction: column; gap: 4px; overflow: auto; }
 .new { display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 14px; }
-.meetings { display: flex; flex-direction: column; gap: 2px; }
+/* The list scrolls on its own, so the load bar, the desk pen and the notebook stay in view. */
+.meetings { display: flex; flex-direction: column; gap: 2px; flex: 0 1 auto; min-height: 0; overflow-y: auto; }
+@media (max-width: 900px) { .meetings { flex-shrink: 0; max-height: 40vh; } }
 .sidehead { padding: 12px 8px 4px; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); }
 .meeting { width: 100%; text-align: left; padding: 10px; border: 0; border-radius: 8px; background: none; color: var(--ink); display: flex; flex-direction: column; }
 .meeting:hover { background: #f0f2f8; }
@@ -102,6 +114,8 @@ a:hover { color: #1e3fb0; }
 .stages { display: flex; flex-wrap: wrap; gap: 6px 20px; margin: 0; padding: 0 0 0 20px; color: var(--faint); font-size: 13px; }
 .stages .done { color: var(--ink); font-weight: 600; }
 .stages .done::marker { color: var(--accent); }
+.time-left { margin: 0; color: var(--quiet); font-size: 13px; }
+.meeting.failed span { color: var(--red); }
 .cards { display: flex; flex-wrap: wrap; gap: 18px; align-items: flex-start; }
 .summary { flex: 1 1 280px; min-width: 0; }
 .transcript { flex: 1.4 1 320px; min-width: 0; }
@@ -198,6 +212,22 @@ td:first-child { word-break: break-all; color: #fff; }
 .note-code { display: inline-block; margin-top: 6px; padding: 1px 6px; border-radius: 4px; background: var(--hood-card); color: var(--hood-quiet); }
 .note-close { position: absolute; top: 6px; right: 6px; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 6px; background: none; color: var(--hood-quiet); font-size: 12px; }
 .note-close:hover { background: var(--hood-card); color: #fff; }
+.note-cause { margin: 8px 0 0; padding: 6px 8px; max-height: 9.5em; overflow: auto; border-radius: 6px; background: var(--hood-card); color: var(--hood-ink); font: 11.5px/1.45 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.note-log, .runlog-log { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.note-log { margin-top: 10px; }
+.note-log button, .runlog-log button { min-height: 26px; padding: 0 10px; border: 1px solid #3a4352; border-radius: 6px; background: none; color: #fff; font: 500 12px var(--mono); }
+.note-log .note-copy { border-color: #fff; background: #fff; color: var(--hood); }
+.note-log button:hover, .runlog-log button:hover { border-color: #fff; }
+.note-said, .runlog-said { flex-basis: 100%; margin: 0; color: #ffb4a8; }
+/* Penelope stands over the peek's bottom right corner. */
+.panel[data-panel=runlogs] { padding-right: 130px; }
+.runlogs { margin: 0; padding: 0; list-style: none; }
+.runlog { display: grid; grid-template-columns: 8.5em minmax(0, 1.2fr) minmax(0, 1fr) 5em auto; align-items: center; gap: 4px 14px; padding: 7px 0; border-bottom: 1px solid #232a35; }
+.runlog-when, .runlog-size { color: var(--hood-quiet); }
+.runlog-what, .runlog-how { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.runlog.failed .runlog-how { color: #ff8a7a; }
+.runlog.clean .runlog-how, .runlog.running .runlog-how { color: var(--hood-quiet); }
+@media (max-width: 700px) { .runlog { grid-template-columns: 1fr 1fr; } }
 .note-peek { display: block; margin-top: 10px; padding: 0; border: 0; background: none; color: #fff; font: 500 12px var(--mono); text-decoration: underline; text-underline-offset: 3px; }
 .peek.nudge { animation: peek-nudge 1.6s ease-in-out infinite; }
 @keyframes note-in { from { opacity: 0; transform: translateY(-6px); } }

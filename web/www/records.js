@@ -108,6 +108,8 @@ export class RecordPrinter {
         }
         return this.close() + text;
       }
+      case "chat":
+        return this.line(dim(`conversation ${record.id}`));
       case "child_output":
         return this.line(dim(`${record.source ?? "child"}: ${onTerminal(record.text)}`));
       case "output":

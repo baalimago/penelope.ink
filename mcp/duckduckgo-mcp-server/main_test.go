@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/baalimago/clai-in-wasmer-sh-poc/mcp/mcpserver"
+	"github.com/baalimago/penelope.ink/mcp/mcpserver"
 )
 
 func testConfig() config {

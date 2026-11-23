@@ -15,6 +15,9 @@ export function notePath(href) {
   return path.slice(path[at] === "/" ? at + 1 : at);
 }
 
+// Blocks of the pad a link in what Penelope says may point the user at (pointer.js): `[text](#provider-card)`.
+const POINTABLE = new Set(["provider-card", "notebook-card"]);
+
 const marked = new Marked({
   gfm: true,
   renderer: {
@@ -24,6 +27,7 @@ const marked = new Marked({
       const text = this.parser.parseInline(tokens);
       const note = notePath(href);
       if (note) return `<a href="#" data-note="${escape(note)}">${text}</a>`;
+      if (POINTABLE.has(href.slice(1)) && href.startsWith("#")) return `<a href="#" data-point="${href.slice(1)}">${text}</a>`;
       if (/^https?:\/\//i.test(href)) return `<a href="${escape(href)}" target="_blank" rel="noopener">${text}</a>`;
       return text;
     },

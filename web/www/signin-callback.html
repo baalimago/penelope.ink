@@ -1,11 +1,11 @@
 <!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Minutes: signing in</title>
+<title>Penelope: signing in</title>
 <link rel="icon" href="./favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="./style.css">
 <main class="callback">
-  <p id="said">Handing the sign-in to Minutes…</p>
+  <p id="said">Handing the sign-in to Penelope…</p>
 </main>
 <script type="module">
   import { SIGNIN_CHANNEL, callbackMessage } from "./providers.js";
@@ -15,7 +15,7 @@
   channel.postMessage(message);
   channel.close();
   document.querySelector("#said").textContent = message.code
-    ? "Signed in. Minutes has it now; you can close this tab."
+    ? "Signed in. Penelope has it now; you can close this tab."
     : `The sign-in did not finish${message.error ? `: ${message.error}` : ""}. You can close this tab.`;
   window.close();
 </script>

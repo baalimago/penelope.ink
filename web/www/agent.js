@@ -1,5 +1,5 @@
 // What the agent said, from clai's -json records: one JSON object a line, each with a `type`
-// (reply_delta, reply, tool_call, tool_result, progress, prompt, diagnostic, error, output).
+// (reply_delta, reply, tool_call, tool_result, progress, prompt, diagnostic, error, output, chat).
 // The app shows the reply; what went wrong becomes a note that points under the hood, where
 // the terminal has every record.
 
@@ -14,6 +14,8 @@ export class AgentRun {
     this.warnings = [];
     this.failures = [];
     this.prompts = [];
+    // The conversation clai saved the run in, which -reply-to continues; null until it says.
+    this.chat = null;
     // Lines that are no record: -json promises none, so each is worth a look.
     this.stray = [];
   }
@@ -54,6 +56,9 @@ export class AgentRun {
         break;
       case "prompt":
         this.prompts.push(record);
+        break;
+      case "chat":
+        this.chat = record.id || null;
         break;
       default:
         break;
@@ -121,17 +126,4 @@ export function problemOf(run, status) {
   if (died) return { level: "error", title: "The agent stopped unexpectedly", detail: brief(run.stray.at(-1)), hint: null, code: null };
   const said = run.stray.at(-1) ?? run.warnings.at(-1)?.message ?? run.failures.at(-1)?.error ?? "";
   return { level: "error", title: `The agent stopped with exit status ${status}`, detail: brief(said), hint: null, code: null };
-}
-
-const MISSING_PROGRAM = /exit status 127|No such file or directory|executable file not found|command not found/;
-
-// A tool that failed: the agent may go on, so this is a warning.
-export function toolProblem({ name, error }) {
-  return {
-    level: "warn",
-    title: `The agent's ${name} tool failed`,
-    detail: brief(error),
-    hint: MISSING_PROGRAM.test(error ?? "") ? "A program the tool starts is missing on the machine." : null,
-    code: null,
-  };
 }

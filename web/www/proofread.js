@@ -1,6 +1,6 @@
 // Proofreading a filed meeting: a row per utterance, corrected in place until saved.
 
-const LABEL = /^(?:Speaker [A-Z0-9]{1,2}|[Uu]nknown[ -][Ss]peaker(?: \d+)?|unknown-\d+)$/;
+const LABEL = /^(?:Speaker [A-Z0-9]{1,2}(?:-[A-Z0-9]{1,2})?|[Uu]nknown[ -][Ss]peaker(?: \d+)?|unknown-\d+)$/;
 const TIME = String.raw`\d{1,2}:\d\d(?::\d\d)?(?:[.,]\d+)?`;
 const STAMP = String.raw`(?:\[[^\]\n]*\d:\d\d[^\]\n]*\]|${TIME}(?:\s*(?:-->|–|-)\s*${TIME})?)`;
 // `- **Speaker A** [00:12]: words`, `[00:00:04.300 --> 00:00:09.250] Ada: words`: prefix, speaker, mid, words.
@@ -64,6 +64,39 @@ export function transcriptRows(text) {
     begun ||= Boolean(counts);
     return { n: front + i, u: counts ? u : null };
   });
+}
+
+// audio_transcribe's JSON segments as transcript lines, `[0:12] Speaker A: words`, the words as they came; other output as it is.
+// With known voices the output is `{segments, naming}`, and a segment a clip named has the person's plain name as its speaker.
+export function transcriptLines(output) {
+  let segments;
+  try {
+    segments = JSON.parse(output);
+  } catch {
+    return output;
+  }
+  const naming = segments?.naming;
+  if (Array.isArray(segments?.segments) && naming && typeof naming === "object" && !Array.isArray(naming)) segments = segments.segments;
+  if (!Array.isArray(segments)) return output;
+  return segments.map(({ start, speaker, text, voice }) => {
+    return `[${clock(start ?? 0)}] ${speakerOf(speaker, voice)}${String(text ?? "").replace(/\s+/g, " ").trim()}`;
+  }).join("\n") + "\n";
+}
+
+// How a segment's speaker leads its line: a letter label (A, 1-B) and clai's calibrated `speaker-N` as
+// "Speaker A", "Speaker 1-B", "Speaker 3", `unknown-N` as it is, and a name, or any speaker a clip named (TJ), as itself.
+function speakerOf(speaker, voice) {
+  if (!speaker) return "";
+  if (voice) return `${speaker}: `;
+  const n = /^speaker-(\d+)$/i.exec(speaker);
+  if (n) return `Speaker ${n[1]}: `;
+  return /^[A-Z0-9]{1,2}(?:-[A-Z0-9]{1,2})?$/.test(speaker) ? `Speaker ${speaker}: ` : `${speaker}: `;
+}
+
+// `text` with the speaker `label` called `name`, wherever the label stands as a whole.
+export function named(text, label, name) {
+  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return text.replace(new RegExp(`(?<![\\p{L}\\p{N}-])${escaped}(?![\\p{L}\\p{N}-])`, "gu"), () => name);
 }
 
 // 4.3 → "0:04", 3725 → "1:02:05".
@@ -809,8 +842,6 @@ export class Proofreader {
   // Plays the row's stretch of the recording, to its end or the next row's start, and stops.
   async play(row) {
     if (!this.playable || row.dataset.start === undefined) return;
-    if (this.playing?.row === row) return this.stop();
-    this.stop();
     const start = Number(row.dataset.start);
     let end = Number(row.dataset.end ?? Number.NaN);
     if (!(end > start)) {
@@ -818,6 +849,15 @@ export class Proofreader {
       while (next && next.dataset.start === undefined) next = this.step(next, 1);
       end = next ? Number(next.dataset.start) : start + 10;
     }
+    return this.playSpan(start, end, row);
+  }
+
+  // Plays the recording from `start` to `end` s and stops, `row` (any element) marked playing meanwhile;
+  // again for the same element, it stops.
+  async playSpan(start, end, row) {
+    if (!this.playable) return;
+    if (this.playing?.row === row) return this.stop();
+    this.stop();
     if (!(end > start)) end = start + 5;
     const playing = { row, timer: null };
     this.playing = playing;

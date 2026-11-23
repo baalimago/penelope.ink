@@ -21,6 +21,15 @@ export function describe(proc) {
   return [base(proc.path), ...argv.slice(1)].join(" ");
 }
 
+// A process's arguments for its row's tooltip, masked: a shell's script whole, any other long argument cut (P2: a put's clip base64).
+function argsShown(proc) {
+  const script = proc.argv[0] === "bash" && proc.argv[1] === "-c" ? 2 : -1;
+  return proc.argv.map((arg, i) => {
+    const masked = mask(arg);
+    return i === script || masked.length <= 80 ? masked : `${masked.slice(0, 40)}… (${masked.length} characters)`;
+  }).join(" ");
+}
+
 // What a process is, in a few words, and a state worth a tag while it runs.
 export function label(proc) {
   const has = (arg) => proc.argv.includes(arg);
@@ -194,7 +203,9 @@ export class Machine {
   }
 
   note(e, kind, text, proc) {
-    this.log.push({ t: e.t, kind, text: mask(text), pid: e.pid, action: proc?.action ?? "machine" });
+    const entry = { t: e.t, kind, text: mask(text), pid: e.pid, action: proc?.action ?? "machine" };
+    this.log.push(entry);
+    this.noted?.(entry, proc);
     if (this.log.length > 2000) this.log.splice(0, this.log.length - 2000);
   }
 
@@ -318,7 +329,7 @@ export class HoodView {
       const name = document.createElement("span");
       name.className = "name";
       name.textContent = mask(describe(proc));
-      name.title = mask(proc.argv.join(" "));
+      name.title = argsShown(proc);
       const { note, tag } = label(proc);
       const about = document.createElement("span");
       about.className = "about";

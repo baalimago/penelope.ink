@@ -5,6 +5,7 @@
 //! between runs.
 
 mod audio;
+mod bin;
 mod host;
 mod jshttp;
 mod names;
@@ -21,8 +22,9 @@ use std::task::{Context, Poll, Waker};
 
 use js_sys::{Promise, Uint8Array};
 use wasixv2::{
-    ByteSink, ByteSource, Console, Engine, Image, ImageId, LoadError, Loader, LocalFuture, Machine,
-    MachineBuilder, OwnedBuffer, ProcessConfig, RunError, Signaller, Stdio, WindowSize,
+    Attach, ByteSink, ByteSource, Console, EmptySource, Engine, Image, ImageId, LoadError, Loader,
+    LocalFuture, Machine, MachineBuilder, OwnedBuffer, ProcessConfig, RunError, Signaller, Stdio,
+    WindowSize,
 };
 use wasixv2_vfs_package::PackageFs;
 use wasm_bindgen::prelude::*;
@@ -52,6 +54,8 @@ pub struct Shell {
     recorder: Arc<observe::Recorder<net::PageNet>>,
     net: net::PageNet,
     notes: Vec<String>,
+    bin: bin::BinFs,
+    packages: Rc<Vec<packages::Package>>,
 }
 
 /// The page's audio inputs from the start, files in `/run/audio`: the default microphone, and
@@ -66,7 +70,9 @@ const AUDIO_INPUTS: [(&str, &str); 2] = [("mic", "Microphone (browser)"), ("tab"
 /// by `cols` that [`Shell::type_input`] types into. `/bin` holds `programs` (clai, the MCP
 /// server ports and the npx and uvx that start them) under `names`, and the commands of
 /// `packages`, webc v3 files, of which the earlier has a name two of them share; their volumes
-/// are mounted where the packages say. `/usr/local/bin`, first on `PATH`, holds `local_programs`
+/// are mounted where the packages say. `late_names` are programs and `late_commands` commands of
+/// packages that [`Shell::install`] brings later: `/bin` lists them, and what starts one waits
+/// for it. `/usr/local/bin`, first on `PATH`, holds `local_programs`
 /// under `local_names`: wrappers that come before the commands they wrap. The page's audio
 /// inputs are files in `/run/audio` (see [`audio`]), `/run/page/out` sends messages to the page
 /// ([`outbox`]), and what the processes do is recorded for [`Shell::take_events`].
@@ -79,6 +85,8 @@ pub async fn boot(
     local_names: Vec<String>,
     local_programs: Vec<Uint8Array>,
     packages: Vec<Uint8Array>,
+    late_names: Vec<String>,
+    late_commands: Vec<String>,
     rows: u16,
     cols: u16,
 ) -> Result<Shell, JsError> {
@@ -113,7 +121,11 @@ pub async fn boot(
         .into_iter()
         .zip(programs.iter().map(|bytes| OwnedBuffer::from(bytes.to_vec())))
         .collect();
-    let notes = packages::install(&mut machine, &packages, programs)
+    let late = packages::Late {
+        programs: late_names,
+        commands: late_commands,
+    };
+    let (bin, notes) = packages::install(&mut machine, &packages, programs, late)
         .await
         .map_err(|e| JsError::new(&e.to_string()))?;
     let certs = PackageFs::from_files(
@@ -168,6 +180,8 @@ pub async fn boot(
         input,
         output,
         notes,
+        bin,
+        packages: Rc::new(packages),
     })
 }
 
@@ -177,20 +191,54 @@ impl Shell {
     /// top of a login's, with the console as its standard streams and controlling terminal,
     /// and resolves to its exit status. What it prints collects for [`Shell::take_output`].
     pub fn run(&self, path: String, args: Vec<String>, env: Vec<String>) -> Promise {
-        let machine = self.machine.clone();
-        let mut login = self.login_env();
-        login.push("TERM=xterm-256color".into());
-        let env = [login, env].concat();
         // Unused: the console takes descriptors 0, 1 and 2.
         let stdio = Stdio::from_fns(|_| {}, |_| {});
-        let config = ProcessConfig { args, env, stdio };
-        future_to_promise(async move {
-            let status = machine
-                .run_file(&Engine::default(), &path, config)
-                .await
-                .map_err(|e| JsError::new(&describe(e)))?;
-            Ok(JsValue::from(status))
-        })
+        self.run_with(path, args, env, stdio, Attach::Console)
+    }
+
+    /// Runs the file at `path` as [`Shell::run`] does, but as a service, off the console: it
+    /// has no controlling terminal, its input is empty, and what it prints shows on the
+    /// terminal as the console's output does. Nothing typed on the console reaches it, nor
+    /// the console's `^C` or hangup, and its exit hangs nothing up.
+    pub fn spawn(&self, path: String, args: Vec<String>, env: Vec<String>) -> Promise {
+        let screen = Arc::new(Screen(self.output.clone()));
+        let stdio = Stdio {
+            stdin: Arc::new(EmptySource),
+            stdout: screen.clone(),
+            stderr: screen,
+        };
+        self.run_with(path, args, env, stdio, Attach::Stdio)
+    }
+
+    /// Brings what the boot listed as late: `programs` under `names`, and `packages`, webc v3
+    /// files, whose commands `expected` names. Resolves to what was left out, and why.
+    pub fn install(
+        &self,
+        names: Vec<String>,
+        programs: Vec<Uint8Array>,
+        packages: Vec<Uint8Array>,
+        expected: Vec<String>,
+    ) -> Result<Promise, JsError> {
+        let late = packages
+            .iter()
+            .map(|bytes| packages::Package::parse(bytes.to_vec()))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| JsError::new(&e.to_string()))?;
+        for (name, bytes) in names.iter().zip(&programs) {
+            self.bin.fill(name, OwnedBuffer::from(bytes.to_vec()));
+        }
+        let (machine, bin, booted) = (self.machine.clone(), self.bin.clone(), self.packages.clone());
+        Ok(future_to_promise(async move {
+            let notes = packages::install_late(&machine, &bin, &booted, &late, &expected).await;
+            bin.wake();
+            let notes = notes.map_err(|e| JsError::new(&e.to_string()))?;
+            Ok(notes.into_iter().map(JsValue::from).collect::<js_sys::Array>().into())
+        }))
+    }
+
+    /// The commands still to come that a program waits for.
+    pub fn waited_for(&self) -> Vec<String> {
+        self.bin.waited_for()
     }
 
     /// The environment of a login, which [`Shell::run`] gives every program.
@@ -257,6 +305,31 @@ impl Shell {
     /// The terminal is now `rows` by `cols`; the console's foreground group gets SIGWINCH.
     pub fn resize(&self, rows: u16, cols: u16) {
         self.signaller.console_resize(window_size(rows, cols));
+    }
+}
+
+impl Shell {
+    /// Runs the file at `path` with `stdio` where `attach` puts it.
+    fn run_with(
+        &self,
+        path: String,
+        args: Vec<String>,
+        env: Vec<String>,
+        stdio: Stdio,
+        attach: Attach,
+    ) -> Promise {
+        let machine = self.machine.clone();
+        let mut login = self.login_env();
+        login.push("TERM=xterm-256color".into());
+        let env = [login, env].concat();
+        let config = ProcessConfig { args, env, stdio };
+        future_to_promise(async move {
+            let status = machine
+                .run_file_with(&Engine::default(), &path, config, attach)
+                .await
+                .map_err(|e| JsError::new(&describe(e)))?;
+            Ok(JsValue::from(status))
+        })
     }
 }
 
@@ -346,6 +419,23 @@ impl ByteSource for Input {
 /// What the console shows, until the page takes it.
 #[derive(Clone, Default)]
 struct Output(Arc<Mutex<Vec<u8>>>);
+
+/// A service's output on the terminal: with no line discipline on the way, each `\n` gets the
+/// `\r` the console's output processing would add.
+struct Screen(Output);
+
+impl ByteSink for Screen {
+    fn write<'a>(&'a self, data: &'a [u8]) -> LocalFuture<'a, io::Result<usize>> {
+        let mut shown = self.0.0.lock().unwrap();
+        for &byte in data {
+            if byte == b'\n' {
+                shown.push(b'\r');
+            }
+            shown.push(byte);
+        }
+        Box::pin(async move { Ok(data.len()) })
+    }
+}
 
 impl ByteSink for Output {
     fn write<'a>(&'a self, data: &'a [u8]) -> LocalFuture<'a, io::Result<usize>> {
