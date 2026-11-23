@@ -1,432 +1,1059 @@
 <!doctype html>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Penelope</title>
-<link rel="icon" href="./favicon.ico" sizes="48x48">
-<link rel="icon" href="./favicon.svg" type="image/svg+xml">
-<link rel="apple-touch-icon" href="./apple-touch-icon.png">
-<link rel="manifest" href="./manifest.json">
-<meta name="theme-color" content="#ffffff">
-<meta name="penelope-version" content="dev">
-<script>
-  // The machine starts before the page's modules have loaded; main.js takes what it said meanwhile.
-  window.machineWorker = new Worker("./worker.js", { type: "module" });
-  window.machineSaid = [];
-  window.machineWorker.onmessage = ({ data }) => window.machineSaid.push(data);
-</script>
-<link rel="stylesheet" href="./node_modules/@xterm/xterm/css/xterm.css">
-<link rel="stylesheet" href="./style.css">
-<link rel="stylesheet" href="./pad.css">
-<header class="top">
-  <button id="menu" class="menu" type="button" aria-label="Your meetings and notebook" aria-controls="sidebar" aria-expanded="false">
-    <svg width="26" height="22" viewBox="0 0 26 22" aria-hidden="true"><path d="M2.2 4.6c6.4-1 14-.7 21.6-.2M2.6 11.2c7 .6 13.2-.4 21.3.3M2.2 17.7c7-.8 15.1.2 21.5-.4" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"/></svg>
-  </button>
-  <div class="brand">
-    <img class="brand-icon" src="./favicon.svg" width="40" height="40" alt="">
-    <strong>Penelope</strong>
-    <span class="tagline">meeting notes, recorded and written in your browser</span>
-  </div>
-  <div class="chips">
-    <span class="chip" id="machine-chip">wasmer.sh · WASIX v2 kernel: booting</span>
-    <span class="chip" id="notebook-chip">slivingdoc: not connected</span>
-    <span class="chip" id="key-chip">AI provider: not connected</span>
-    <button id="change-key" class="inline" hidden>Disconnect</button>
-    <button id="peek" class="peek" aria-expanded="false" aria-controls="hood">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 17l6-6-6-6M12 19h8"/></svg>
-      Peek under the hood
-    </button>
-  </div>
-</header>
-<main class="stage">
-  <section class="app" id="app" aria-label="Penelope" data-phase="booting" aria-busy="true">
-    <nav id="sidebar" class="sidebar" aria-label="Meetings">
-      <button id="new" class="primary new">
-        <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="currentColor"/></svg>
-        New recording
-      </button>
-      <div id="meetings" class="meetings"></div>
-      <p id="empty" class="quiet empty">No meetings in the notebook yet.</p>
-      <div id="loadbar" class="loadbar" role="status" hidden>
-        <span class="loadbar-text"></span>
-        <svg viewBox="0 0 220 14" width="220" height="14" aria-hidden="true">
-          <defs><clipPath id="loadbar-clip" class="loadbar-clip"><rect x="0" y="0" width="0" height="14"/></clipPath></defs>
-          <path class="loadbar-shade" clip-path="url(#loadbar-clip)"/>
-          <path class="loadbar-box"/>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Penelope — Meeting notes, recorded in your browser</title>
+    <meta
+      name="description"
+      content="Record meetings in your browser, transcribe them with speaker labels, and keep the summary and transcript in your notebook."
+    />
+    <link rel="canonical" href="https://penelope.ink/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://penelope.ink/" />
+    <meta property="og:title" content="Penelope - The listening pen." />
+    <meta
+      property="og:description"
+      content="Record meetings in your browser, transcribe them with speaker labels, and keep the summary and transcript in your notebook."
+    />
+    <meta property="og:image" content="https://penelope.ink/icon-512.png" />
+    <meta
+      property="og:image:alt"
+      content="Penelope, a red pen character on a yellow notebook page"
+    />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="512" />
+    <meta property="og:image:height" content="512" />
+    <meta property="og:site_name" content="Penelope" />
+    <meta property="og:locale" content="en_US" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Penelope - The listening pen." />
+    <meta
+      name="twitter:description"
+      content="Record meetings in your browser, transcribe them with speaker labels, and keep the summary and transcript in your notebook."
+    />
+    <meta name="twitter:image" content="https://penelope.ink/icon-512.png" />
+    <meta
+      name="twitter:image:alt"
+      content="Penelope, a red pen character on a yellow notebook page"
+    />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "Penelope",
+        "url": "https://penelope.ink/",
+        "description": "Record meetings in your browser, transcribe them with speaker labels, and keep the summary and transcript in your notebook.",
+        "applicationCategory": "BusinessApplication",
+        "operatingSystem": "Web browser"
+      }
+    </script>
+    <link rel="icon" href="./favicon.ico" sizes="48x48" />
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+    <link rel="manifest" href="./manifest.json" />
+    <meta name="theme-color" content="#ffffff" />
+    <meta name="penelope-version" content="dev" />
+    <script>
+      // The machine starts before the page's modules have loaded; main.js takes what it said meanwhile.
+      window.machineWorker = new Worker("./worker.js", { type: "module" });
+      window.machineSaid = [];
+      window.machineWorker.onmessage = ({ data }) =>
+        window.machineSaid.push(data);
+    </script>
+    <link rel="stylesheet" href="./node_modules/@xterm/xterm/css/xterm.css" />
+    <link rel="stylesheet" href="./style.css" />
+    <link rel="stylesheet" href="./pad.css" />
+  </head>
+  <body>
+    <header class="top">
+      <button
+        id="menu"
+        class="menu"
+        type="button"
+        aria-label="Your meetings and notebook"
+        aria-controls="sidebar"
+        aria-expanded="false"
+      >
+        <svg width="26" height="22" viewBox="0 0 26 22" aria-hidden="true">
+          <path
+            d="M2.2 4.6c6.4-1 14-.7 21.6-.2M2.6 11.2c7 .6 13.2-.4 21.3.3M2.2 17.7c7-.8 15.1.2 21.5-.4"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.3"
+            stroke-linecap="round"
+          />
         </svg>
-        <span class="loadbar-detail"></span>
-        <button type="button" class="inline" hidden></button>
+      </button>
+      <div class="brand">
+        <img
+          class="brand-icon"
+          src="./favicon.svg"
+          width="40"
+          height="40"
+          alt=""
+        />
+        <strong>Penelope</strong>
+        <span class="tagline"
+          >meeting notes, recorded and written in your browser</span
+        >
       </div>
-      <button id="desk-pen" class="desk-pen" type="button" aria-pressed="false">
-        <svg viewBox="-3 -38 128 41" width="132" height="42" aria-hidden="true">
-          <defs>
-            <linearGradient id="dp-lacquer" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3c4660"/><stop offset=".18" stop-color="#5d6984"/><stop offset=".34" stop-color="#252c3c"/><stop offset=".78" stop-color="#141821"/><stop offset="1" stop-color="#0b0d13"/></linearGradient>
-            <linearGradient id="dp-grip" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2c313d"/><stop offset=".22" stop-color="#4a5160"/><stop offset=".42" stop-color="#1a1e27"/><stop offset="1" stop-color="#07080c"/></linearGradient>
-            <linearGradient id="dp-brass" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#a8854a"/><stop offset=".28" stop-color="#f0dca6"/><stop offset=".55" stop-color="#c5a263"/><stop offset="1" stop-color="#6f5528"/></linearGradient>
-          </defs>
-          <g transform="rotate(-14)">
-            <path d="M0 0C3.5-.5 9-3 16.5-3.6V3.6C9 3 3.5.5 0 0Z" fill="url(#dp-brass)" stroke="#6e5427" stroke-width=".3"/>
-            <path d="M1.2 0H11.4M14.2-3.1Q13.4 0 14.2 3.1" fill="none" stroke="#4d3b18" stroke-width=".35" stroke-linecap="round"/>
-            <circle cx="12" cy="0" r=".75" fill="#3b2c12"/>
-            <path d="M15.5-3.5 29.8-4.1V4.1L15.5 3.5Z" fill="url(#dp-grip)"/>
-            <rect x="29.8" y="-4.3" width="1.6" height="8.6" fill="url(#dp-brass)"/>
-            <rect x="31.4" y="-4.5" width="56.6" height="9" fill="url(#dp-lacquer)"/>
-            <path d="M88-5H120A4 5 0 0 1 120 5H88Z" fill="url(#dp-lacquer)"/>
-            <rect x="88" y="-5.1" width="2.4" height="10.2" fill="url(#dp-brass)"/>
-            <path d="M99.6-6.9H119.2Q120.6-6.9 120.6-5.5V-4.8H99.6Z" fill="url(#dp-brass)"/>
-            <circle cx="99.6" cy="-5.6" r="1.2" fill="url(#dp-brass)"/>
-            <rect x="33" y="-3.4" width="53" height=".9" rx=".45" fill="#fff" opacity=".2"/>
-            <rect x="92" y="-3.9" width="26" height=".9" rx=".45" fill="#fff" opacity=".2"/>
+      <div class="chips">
+        <span class="chip" id="machine-chip"
+          >wasmer.sh · WASIX v2 kernel: booting</span
+        >
+        <span class="chip" id="notebook-chip">slivingdoc: not connected</span>
+        <span class="chip" id="key-chip">AI provider: not connected</span>
+        <button id="change-key" class="inline" hidden>Disconnect</button>
+        <button
+          id="peek"
+          class="peek"
+          aria-expanded="false"
+          aria-controls="hood"
+        >
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            aria-hidden="true"
+          >
+            <path d="M4 17l6-6-6-6M12 19h8" />
+          </svg>
+          Peek under the hood
+        </button>
+      </div>
+    </header>
+    <main class="stage">
+      <section
+        class="app"
+        id="app"
+        aria-label="Penelope"
+        data-phase="booting"
+        aria-busy="true"
+      >
+        <nav id="sidebar" class="sidebar" aria-label="Meetings">
+          <button id="new" class="primary new">
+            <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="12" cy="12" r="8" fill="currentColor" />
+            </svg>
+            New recording
+          </button>
+          <div id="meetings" class="meetings"></div>
+          <p id="empty" class="quiet empty">No meetings in the notebook yet.</p>
+          <div id="loadbar" class="loadbar" role="status" hidden>
+            <span class="loadbar-text"></span>
+            <svg
+              viewBox="0 0 220 14"
+              width="220"
+              height="14"
+              aria-hidden="true"
+            >
+              <defs>
+                <clipPath id="loadbar-clip" class="loadbar-clip">
+                  <rect x="0" y="0" width="0" height="14" />
+                </clipPath>
+              </defs>
+              <path class="loadbar-shade" clip-path="url(#loadbar-clip)" />
+              <path class="loadbar-box" />
+            </svg>
+            <span class="loadbar-detail"></span>
+            <button type="button" class="inline" hidden></button>
+          </div>
+          <button
+            id="desk-pen"
+            class="desk-pen"
+            type="button"
+            aria-pressed="false"
+          >
+            <svg
+              viewBox="-3 -38 128 41"
+              width="132"
+              height="42"
+              aria-hidden="true"
+            >
+              <defs>
+                <linearGradient id="dp-lacquer" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0" stop-color="#3c4660" />
+                  <stop offset=".18" stop-color="#5d6984" />
+                  <stop offset=".34" stop-color="#252c3c" />
+                  <stop offset=".78" stop-color="#141821" />
+                  <stop offset="1" stop-color="#0b0d13" />
+                </linearGradient>
+                <linearGradient id="dp-grip" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0" stop-color="#2c313d" />
+                  <stop offset=".22" stop-color="#4a5160" />
+                  <stop offset=".42" stop-color="#1a1e27" />
+                  <stop offset="1" stop-color="#07080c" />
+                </linearGradient>
+                <linearGradient id="dp-brass" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0" stop-color="#a8854a" />
+                  <stop offset=".28" stop-color="#f0dca6" />
+                  <stop offset=".55" stop-color="#c5a263" />
+                  <stop offset="1" stop-color="#6f5528" />
+                </linearGradient>
+              </defs>
+              <g transform="rotate(-14)">
+                <path
+                  d="M0 0C3.5-.5 9-3 16.5-3.6V3.6C9 3 3.5.5 0 0Z"
+                  fill="url(#dp-brass)"
+                  stroke="#6e5427"
+                  stroke-width=".3"
+                />
+                <path
+                  d="M1.2 0H11.4M14.2-3.1Q13.4 0 14.2 3.1"
+                  fill="none"
+                  stroke="#4d3b18"
+                  stroke-width=".35"
+                  stroke-linecap="round"
+                />
+                <circle cx="12" cy="0" r=".75" fill="#3b2c12" />
+                <path
+                  d="M15.5-3.5 29.8-4.1V4.1L15.5 3.5Z"
+                  fill="url(#dp-grip)"
+                />
+                <rect
+                  x="29.8"
+                  y="-4.3"
+                  width="1.6"
+                  height="8.6"
+                  fill="url(#dp-brass)"
+                />
+                <rect
+                  x="31.4"
+                  y="-4.5"
+                  width="56.6"
+                  height="9"
+                  fill="url(#dp-lacquer)"
+                />
+                <path
+                  d="M88-5H120A4 5 0 0 1 120 5H88Z"
+                  fill="url(#dp-lacquer)"
+                />
+                <rect
+                  x="88"
+                  y="-5.1"
+                  width="2.4"
+                  height="10.2"
+                  fill="url(#dp-brass)"
+                />
+                <path
+                  d="M99.6-6.9H119.2Q120.6-6.9 120.6-5.5V-4.8H99.6Z"
+                  fill="url(#dp-brass)"
+                />
+                <circle cx="99.6" cy="-5.6" r="1.2" fill="url(#dp-brass)" />
+                <rect
+                  x="33"
+                  y="-3.4"
+                  width="53"
+                  height=".9"
+                  rx=".45"
+                  fill="#fff"
+                  opacity=".2"
+                />
+                <rect
+                  x="92"
+                  y="-3.9"
+                  width="26"
+                  height=".9"
+                  rx=".45"
+                  fill="#fff"
+                  opacity=".2"
+                />
+              </g>
+            </svg>
+            <span class="desk-pen-say">Doodle</span>
+          </button>
+          <div class="notebook">
+            <div id="notebook-status">Notebook: on this machine</div>
+            <code id="notebook-path">~/notebook/meetings/</code>
+            <button id="connect" class="inline">Connect slivingdoc</button>
+            <button id="signout" class="inline" hidden>Sign out</button>
+            <p id="signout-note" class="quiet" hidden>
+              <span id="signout-said"></span>
+              <a
+                id="tokens-link"
+                href="https://www.slivingdoc.dev/tokens"
+                target="_blank"
+                rel="noopener"
+                >Revoke the key on slivingdoc.dev</a
+              >
+            </p>
+            <button id="install" class="inline install" type="button" hidden>
+              Install Penelope as an app
+            </button>
+            <a
+              id="source-link"
+              class="source-link"
+              href="https://github.com/baalimago/penelope.ink"
+              target="_blank"
+              rel="noopener"
+              title="github.com/baalimago/penelope.ink"
+              >Penelope is open source: read the code, or run your own</a
+            >
+          </div>
+        </nav>
+
+        <div id="scrim" class="scrim" hidden></div>
+        <div class="content">
+          <ol
+            id="loading"
+            class="loading"
+            aria-label="Getting Penelope ready"
+            aria-live="polite"
+          ></ol>
+          <div id="setup" class="setup">
+            <section id="provider-card" class="card">
+              <h2>Connect an AI provider</h2>
+              <p class="quiet">
+                The agent transcribes with speaker labels and writes the summary
+                with it, billed to your account. This browser keeps the key for
+                this site, and it reaches only the agent.
+              </p>
+              <div class="row">
+                <button
+                  id="signin-openrouter"
+                  data-provider="openrouter"
+                  type="button"
+                  class="primary"
+                >
+                  Sign in with OpenRouter
+                </button>
+              </div>
+              <p id="provider-wait" class="quiet" role="status" hidden>
+                <span id="provider-wait-text"></span>
+                <a id="provider-link" target="_blank" rel="noopener"
+                  >Open the sign-in page</a
+                >
+              </p>
+              <form id="key-form" data-provider="openai" class="row">
+                <label for="key-input" class="sr-only">OpenAI API key</label>
+                <input
+                  id="key-input"
+                  type="password"
+                  autocomplete="off"
+                  placeholder="or paste an OpenAI API key, sk-…"
+                />
+                <button class="secondary">Use key</button>
+              </form>
+              <p class="quiet">
+                For OpenAI, create a key just for this on
+                <a
+                  href="https://platform.openai.com/api-keys"
+                  target="_blank"
+                  rel="noopener"
+                  >OpenAI's API keys page</a
+                >: a restricted key in a project with a small budget, which you
+                delete when you are done, is the safest.
+              </p>
+              <p id="provider-said" class="quiet" hidden>
+                <span id="provider-said-text"></span>
+                <a id="provider-manage" target="_blank" rel="noopener" hidden
+                  >Delete it on OpenRouter</a
+                >
+              </p>
+            </section>
+            <form id="space-form" class="card space" hidden>
+              <label for="space"
+                ><strong>Choose a slivingdoc space</strong></label
+              >
+              <p class="quiet">
+                Your login reaches more than one space and has no default yet.
+                Penelope keeps the meetings in the one you pick, and this
+                browser remembers it.
+              </p>
+              <div class="row">
+                <select id="space"></select>
+                <button class="primary">Use this space</button>
+              </div>
+            </form>
+            <section id="notebook-card" class="card" hidden>
+              <h2>First, sign in to slivingdoc</h2>
+              <p class="quiet">
+                Keeps the notes in your hosted notebook, with history; without
+                it, they stay in this browser. Sign in in a new tab, and the
+                login stays in this browser.
+              </p>
+              <div class="row">
+                <button id="signin" class="primary" data-needs="record">
+                  Sign in to slivingdoc
+                </button>
+                <button id="not-now" type="button" class="inline">
+                  Not now, keep notes in this browser
+                </button>
+              </div>
+              <div id="signin-wait" class="signin" hidden>
+                <p id="signin-text" class="quiet">
+                  Asking slivingdoc for a sign-in page…
+                </p>
+                <p>Code <strong id="signin-code" class="code"></strong></p>
+                <a id="signin-link" target="_blank" rel="noopener"
+                  >Open the sign-in page</a
+                >
+              </div>
+              <form id="notebook-form" class="row">
+                <label for="token-input" class="sr-only"
+                  >slivingdoc API token</label
+                >
+                <input
+                  id="token-input"
+                  type="password"
+                  autocomplete="off"
+                  placeholder="or paste an API token from slivingdoc.dev"
+                />
+                <button class="secondary">Use token</button>
+              </form>
+            </section>
+          </div>
+
+          <p id="status" class="status" role="status"></p>
+
+          <section data-view="record" class="stack-lg">
+            <h1>New recording</h1>
+            <form id="record-form" class="card stack">
+              <label for="title">Meeting name</label>
+              <input id="title" placeholder="Daily sync" />
+              <label for="details"
+                >Who is there, and anything else the agent should know</label
+              >
+              <textarea
+                id="details"
+                rows="3"
+                placeholder="Remote call with Ada and Grace"
+              ></textarea>
+              <fieldset id="people" class="people" hidden>
+                <legend>
+                  Who is in the meeting? Ticking narrows the naming by voice to
+                  those people; with nobody ticked, every confirmed voice in the
+                  library is tried.
+                </legend>
+              </fieldset>
+              <p id="trust-note" class="quiet" hidden>
+                The agent, <code id="trust-profile"></code>, comes from the clai
+                hub (<a id="trust-link" target="_blank" rel="noopener"
+                  >read what it runs</a
+                >). Starting the recording trusts it in this browser.
+              </p>
+              <aside class="precheck postit" aria-labelledby="precheck-title">
+                <h2 id="precheck-title">Before you record</h2>
+                <ol class="ticks">
+                  <li>
+                    <button id="access-mic" type="button" class="tick">
+                      Allow the mic
+                    </button>
+                  </li>
+                  <li>
+                    <button id="access-computer" type="button" class="tick">
+                      Share a tab with your call
+                    </button>
+                  </li>
+                  <li>
+                    <button
+                      id="access-sound"
+                      type="button"
+                      class="tick"
+                      disabled
+                    >
+                      Hear the call's sound
+                    </button>
+                  </li>
+                </ol>
+                <div id="precheck-level" class="level" hidden>
+                  <span></span>
+                </div>
+                <p id="precheck-hint" class="hint"></p>
+                <div class="row">
+                  <button id="unshare" type="button" class="inline" hidden>
+                    Stop sharing
+                  </button>
+                  <button id="mic-only" type="button" class="inline">
+                    Or skip it: record the mic only
+                  </button>
+                </div>
+              </aside>
+              <button class="primary">Start recording</button>
+              <p id="record-busy" class="quiet" hidden></p>
+              <p id="record-says" class="quiet">
+                It records what the checklist set up: your mic, and the call's
+                sound unless you skip it.
+              </p>
+            </form>
+          </section>
+
+          <section data-view="meeting" class="stack-lg" hidden>
+            <div class="meeting-head">
+              <div>
+                <h1 id="meeting-title">Meeting</h1>
+                <div id="meeting-meta" class="quiet"></div>
+              </div>
+              <div class="actions">
+                <button id="stop" class="dark" hidden>
+                  <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                  >
+                    <rect
+                      x="5"
+                      y="5"
+                      width="14"
+                      height="14"
+                      rx="2"
+                      fill="currentColor"
+                    />
+                  </svg>
+                  Stop and summarize
+                </button>
+                <button
+                  id="popout"
+                  class="popout-open"
+                  title="Show what is in progress in a small window that stays on top"
+                  hidden
+                >
+                  pop out
+                </button>
+              </div>
+            </div>
+
+            <div
+              id="tape"
+              class="tape"
+              role="group"
+              aria-label="The meeting's recording"
+              hidden
+            >
+              <div class="tape-row">
+                <button
+                  id="tape-play"
+                  type="button"
+                  class="tape-play"
+                  aria-label="Play the recording"
+                >
+                  <svg
+                    width="56"
+                    height="56"
+                    viewBox="0 0 56 56"
+                    aria-hidden="true"
+                  >
+                    <path
+                      class="tape-ring"
+                      d="M31 5.5C17 4 6 13.5 6.5 28c.4 12.5 10 22 22.5 21.5 12.6-.5 21.5-10.3 21-22.8C49.5 14.5 41 6.3 27 7.2"
+                    />
+                    <path class="tape-start" d="M22.5 18.5l16 9.6-16 9.4z" />
+                    <path class="tape-pause" d="M22.5 19v18M33.5 19v18" />
+                  </svg>
+                </button>
+                <div class="tape-track">
+                  <svg
+                    class="tape-wave"
+                    viewBox="0 0 100 32"
+                    preserveAspectRatio="none"
+                    aria-hidden="true"
+                  >
+                    <defs>
+                      <clipPath id="tape-inked" class="tape-inked">
+                        <rect x="-1" y="-2" width="0" height="36" />
+                      </clipPath>
+                    </defs>
+                    <path class="tape-pencil" />
+                    <path class="tape-ink" clip-path="url(#tape-inked)" />
+                    <line class="tape-head" x1="0" x2="0" y1="1" y2="31" />
+                  </svg>
+                  <input
+                    id="tape-seek"
+                    class="tape-seek"
+                    type="range"
+                    min="0"
+                    max="0"
+                    step="any"
+                    value="0"
+                    aria-label="Where in the recording"
+                  />
+                </div>
+                <span class="tape-time" aria-hidden="true"
+                  ><span class="tape-at">0:00</span> of
+                  <span class="tape-length">0:00</span></span
+                >
+              </div>
+              <div class="tape-links">
+                <a id="recording-download" class="tape-link" download hidden
+                  >Download the recording</a
+                >
+                <button id="again" type="button" class="tape-link" hidden>
+                  Transcribe again
+                </button>
+              </div>
+              <audio id="recording" preload="metadata"></audio>
+            </div>
+            <aside
+              id="again-note"
+              class="again-note"
+              aria-labelledby="again-title"
+              hidden
+            >
+              <h2 id="again-title">Transcribe this meeting again?</h2>
+              <p id="again-said"></p>
+              <fieldset id="again-people" class="people" hidden>
+                <legend>
+                  Who is in the meeting? Ticked are the people its transcript
+                  names now; with nobody ticked, every confirmed voice in the
+                  library is tried.
+                </legend>
+              </fieldset>
+              <div class="row">
+                <button
+                  id="again-yes"
+                  type="button"
+                  class="dark"
+                  data-needs="record"
+                >
+                  Transcribe again
+                </button>
+                <button id="again-no" type="button" class="inline">
+                  Keep these notes
+                </button>
+              </div>
+            </aside>
+
+            <div id="recbar" class="card recbar" hidden>
+              <span id="rec-state" class="rec-state">Starting the agent…</span>
+              <div id="wave" class="wave" aria-hidden="true"></div>
+              <span id="rec-inputs" class="quiet rec-inputs">Mic</span>
+            </div>
+            <p id="time-left" class="time-left" role="status" hidden>
+              <span id="time-left-text"></span>
+            </p>
+
+            <p id="rec-quiet" class="rec-quiet" role="alert" hidden>
+              <strong>Are you sharing the right tab?</strong>
+              Nothing has come from it for a minute. On the call's tab, use your
+              browser's <em>Share this tab instead</em>, or check that the call
+              isn't muted. The recording goes on.
+            </p>
+
+            <ol id="stages" class="stages" hidden></ol>
+
+            <form id="speakers" class="card speakers" hidden>
+              <h2>Who is speaking?</h2>
+              <p class="quiet">
+                The transcript names the people whose voices this browser knows.
+                Name the others, or correct a name, and the app puts the names
+                in the transcript and the summary.
+              </p>
+              <p id="speakers-said" class="quiet" role="status" hidden></p>
+              <div id="speaker-rows" class="stack"></div>
+              <label class="remember" hidden
+                ><input type="checkbox" id="remember" /> Remember these voices,
+                so later transcripts name them</label
+              >
+              <button class="primary">Name the speakers</button>
+            </form>
+
+            <div id="agent" class="card" hidden>
+              <h2>The agent says</h2>
+              <p id="agent-text" class="prose"></p>
+              <p id="retry-note" class="quiet" hidden>
+                The recording is kept in this browser, above.
+                <button
+                  id="retry"
+                  type="button"
+                  class="secondary"
+                  data-needs="record"
+                >
+                  Try again with this recording
+                </button>
+              </p>
+              <form id="reply-form" class="row">
+                <label for="reply" class="sr-only">Answer the agent</label>
+                <input
+                  id="reply"
+                  placeholder="Answer the agent, such as who Speaker A is"
+                />
+                <button class="secondary" data-needs="record">Send</button>
+              </form>
+            </div>
+
+            <div class="cards">
+              <article class="card summary">
+                <h2>Summary</h2>
+                <div id="summary" class="prose"></div>
+              </article>
+              <article class="card transcript">
+                <h2>Transcript</h2>
+                <p id="proof-hint" class="quiet proof-hint" hidden></p>
+                <p id="proof-keys" class="sr-only">
+                  Enter corrects the line, Space plays it, S changes who said
+                  it, the arrows move between lines.
+                </p>
+                <div id="transcript" class="prose"></div>
+              </article>
+            </div>
+
+            <aside
+              id="fixes"
+              class="fixes"
+              aria-labelledby="fixes-count"
+              hidden
+            >
+              <div id="fix-offer" class="fix-offer" hidden>
+                <p id="offer-what" class="offer-what"></p>
+                <p id="offer-where" class="hint"></p>
+                <div class="row">
+                  <button id="offer-all" type="button" class="secondary">
+                    Fix them all
+                  </button>
+                  <button id="offer-one" type="button" class="inline">
+                    Just this one
+                  </button>
+                </div>
+              </div>
+              <h2 id="fixes-count">1 correction</h2>
+              <p id="fixes-said" class="hint" role="status"></p>
+              <div class="row">
+                <button id="fixes-save" type="button" class="primary">
+                  Save
+                </button>
+                <button id="fixes-undo" type="button" class="inline">
+                  Undo the last
+                </button>
+                <button id="fixes-drop" type="button" class="inline">
+                  Drop them
+                </button>
+              </div>
+            </aside>
+
+            <div id="saved" class="quiet" hidden>
+              Saved to the notebook as <code id="saved-path"></code
+              ><span class="history-sep"> · </span
+              ><button id="history" class="inline">history</button>
+            </div>
+            <ul id="history-list" class="history" hidden></ul>
+          </section>
+        </div>
+      </section>
+
+      <section class="hood" id="hood" aria-label="Under the hood">
+        <div class="hoodhead">
+          <strong>Under the hood</strong>
+          <div role="tablist">
+            <button role="tab" data-tab="activity" aria-selected="true">
+              Activity
+            </button>
+            <button role="tab" data-tab="io" aria-selected="false">
+              Network and files
+            </button>
+            <button role="tab" data-tab="terminal" aria-selected="false">
+              Terminal
+            </button>
+            <button role="tab" data-tab="runlogs" aria-selected="false">
+              Run logs
+            </button>
+          </div>
+          <button id="peek-close" class="close" aria-label="Close the peek">
+            ✕
+          </button>
+        </div>
+        <div class="panels">
+          <div class="panel active" data-panel="activity">
+            <p id="hood-idle" class="quiet">
+              Every button here runs a program on a WASIX v2 machine in this
+              tab. Click one to see what it starts, opens and connects to.
+            </p>
+            <div class="activity-col">
+              <h2>Processes</h2>
+              <ul id="hood-tree" class="tree"></ul>
+            </div>
+            <div class="activity-col">
+              <div class="loghead">
+                <h2>Events</h2>
+                <div class="filters">
+                  <button data-kind="exec" aria-pressed="true" class="tag exec">
+                    exec
+                  </button>
+                  <button data-kind="exit" aria-pressed="true" class="tag exit">
+                    exit
+                  </button>
+                  <button data-kind="net" aria-pressed="true" class="tag net">
+                    net
+                  </button>
+                  <button data-kind="fs" aria-pressed="true" class="tag fs">
+                    fs
+                  </button>
+                  <button
+                    data-kind="audio"
+                    aria-pressed="true"
+                    class="tag audio"
+                  >
+                    audio
+                  </button>
+                </div>
+              </div>
+              <ul id="hood-log" class="log"></ul>
+              <p id="hood-dropped" class="quiet" hidden></p>
+            </div>
+          </div>
+          <div class="panel" data-panel="io">
+            <h2>Connections</h2>
+            <table id="hood-net">
+              <thead>
+                <tr>
+                  <th>Host</th>
+                  <th>Processes</th>
+                  <th>Sent</th>
+                  <th>Received</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+            <h2>Files written</h2>
+            <table id="hood-files">
+              <thead>
+                <tr>
+                  <th>Path</th>
+                  <th>Processes</th>
+                  <th>Written</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <div class="panel" data-panel="terminal">
+            <div id="terminal"></div>
+          </div>
+          <div class="panel" data-panel="runlogs">
+            <p id="runlogs-none" class="quiet">
+              No run has a log yet. Each run's log is kept here, the newest ten,
+              with no secrets and none of the model's words.
+            </p>
+            <ul id="runlogs" class="runlogs"></ul>
+          </div>
+        </div>
+      </section>
+    </main>
+    <div id="notes" class="notes" aria-label="Problems" hidden></div>
+    <aside
+      id="update"
+      class="update-note"
+      role="status"
+      aria-labelledby="update-title"
+      hidden
+    >
+      <h2 id="update-title">Penelope has been updated</h2>
+      <p>Reload to get the new version. Your meetings stay where they are.</p>
+      <div class="row">
+        <button id="update-reload" class="inline" type="button">Reload</button>
+        <button id="update-later" class="inline" type="button">Later</button>
+      </div>
+    </aside>
+    <aside
+      id="penelope"
+      class="penelope"
+      aria-label="Penelope, your guide and red pen"
+      hidden
+    >
+      <section
+        id="penelope-bubble"
+        class="penelope-bubble"
+        role="dialog"
+        aria-labelledby="penelope-name"
+        hidden
+      >
+        <header class="penelope-head">
+          <strong id="penelope-name">Penelope</strong>
+          <span class="penelope-role">your guide and red pen</span>
+          <button
+            id="penelope-close"
+            type="button"
+            class="penelope-close"
+            aria-label="Put Penelope away"
+          >
+            ✕
+          </button>
+        </header>
+        <ol id="penelope-log" class="penelope-log" aria-live="polite"></ol>
+        <p id="penelope-doing" class="penelope-doing" role="status" hidden></p>
+        <div id="penelope-ideas" class="penelope-ideas"></div>
+        <form id="penelope-form" class="penelope-form">
+          <div class="penelope-tools">
+            <button
+              id="penelope-tools"
+              type="button"
+              class="penelope-tools-button"
+              aria-haspopup="true"
+              aria-expanded="false"
+              aria-controls="penelope-tools-menu"
+            >
+              + Tools
+            </button>
+            <div id="penelope-tools-menu" class="penelope-tools-menu" hidden>
+              <p class="penelope-tools-head">
+                Let Penelope use <span class="penelope-beta">beta</span>
+              </p>
+              <ul id="penelope-tools-list" class="penelope-tools-list"></ul>
+            </div>
+          </div>
+          <label for="penelope-input" class="sr-only">Ask Penelope</label>
+          <textarea
+            id="penelope-input"
+            rows="1"
+            placeholder="Ask Penelope anything"
+          ></textarea>
+          <button id="penelope-ask" class="penelope-ask" data-needs="agent">
+            Ask
+          </button>
+        </form>
+      </section>
+      <button
+        id="penelope-pen"
+        type="button"
+        class="penelope-pen"
+        aria-label="Talk to Penelope, the red pen"
+        aria-expanded="false"
+        aria-controls="penelope-bubble"
+      >
+        <svg width="48" height="172" viewBox="0 0 48 172" aria-hidden="true">
+          <g class="penelope-body">
+            <rect x="12" y="14" width="24" height="42" rx="7" fill="#a8352c" />
+            <rect
+              x="14.5"
+              y="17"
+              width="4.5"
+              height="36"
+              rx="2.2"
+              fill="#c9554a"
+            />
+            <rect x="13" y="56" width="22" height="80" fill="#e2574c" />
+            <rect x="13" y="56" width="6" height="80" fill="#f07c70" />
+            <rect x="29" y="56" width="6" height="80" fill="#b83b31" />
+            <rect x="12" y="53" width="24" height="5" rx="2" fill="#8e2a1f" />
+            <path
+              d="M33 17h3.5a1.5 1.5 0 0 1 1.5 1.5v42a3 3 0 0 1-3 3h-.5a1.5 1.5 0 0 1-1.5-1.5z"
+              fill="#d6dae2"
+              stroke="#9aa0ab"
+              stroke-width=".8"
+            />
+            <rect x="14" y="136" width="20" height="10" rx="2" fill="#7a2620" />
+            <path d="M15 146h18l-7 17h-4z" fill="#d6dae2" />
+            <circle cx="24" cy="164.6" r="1.8" fill="#c0392b" />
+            <g class="penelope-bow">
+              <path
+                d="M24 13C15 2 4 4 7 13c2 7 10 6 17 0z"
+                fill="#ff8fb8"
+                stroke="#d94f86"
+                stroke-width="1.2"
+              />
+              <path
+                d="M24 13c9-11 20-9 17 0-2 7-10 6-17 0z"
+                fill="#ff8fb8"
+                stroke="#d94f86"
+                stroke-width="1.2"
+              />
+              <path
+                d="M22 15l-4 9 4-2zM26 15l4 9-4-2z"
+                fill="#ff8fb8"
+                stroke="#d94f86"
+                stroke-width="1"
+              />
+              <rect
+                x="20.5"
+                y="9.5"
+                width="7"
+                height="7"
+                rx="2.5"
+                fill="#f06a9f"
+                stroke="#d94f86"
+                stroke-width="1"
+              />
+            </g>
+            <circle
+              class="penelope-cheek"
+              cx="15.8"
+              cy="88"
+              r="2.6"
+              fill="#ffb3c7"
+              opacity=".75"
+            />
+            <circle
+              class="penelope-cheek"
+              cx="32.2"
+              cy="88"
+              r="2.6"
+              fill="#ffb3c7"
+              opacity=".75"
+            />
+            <g class="penelope-eyes">
+              <ellipse cx="19.2" cy="79" rx="3.9" ry="4.9" fill="#fff" />
+              <ellipse cx="28.8" cy="79" rx="3.9" ry="4.9" fill="#fff" />
+              <circle
+                class="penelope-pupil"
+                cx="19.7"
+                cy="80"
+                r="2"
+                fill="#2a1210"
+              />
+              <circle
+                class="penelope-pupil"
+                cx="29.3"
+                cy="80"
+                r="2"
+                fill="#2a1210"
+              />
+              <path
+                d="M15.6 76.2l-2.3-1.2M16.4 74.6l-1.6-2M18.2 73.6l-.5-2.3M32.4 76.2l2.3-1.2M31.6 74.6l1.6-2M29.8 73.6l.5-2.3"
+                stroke="#2a1210"
+                stroke-width="1.1"
+                stroke-linecap="round"
+              />
+            </g>
+            <path
+              class="penelope-lids"
+              d="M15.4 79q3.8 3.2 7.6 0M25 79q3.8 3.2 7.6 0M15.6 80.6l-1.8 1.4M32.4 80.6l1.8 1.4"
+              fill="none"
+              stroke="#2a1210"
+              stroke-width="1.3"
+              stroke-linecap="round"
+            />
+            <g class="penelope-zs">
+              <text x="2" y="74">z</text>
+              <text x="0" y="61">z</text>
+            </g>
+            <path
+              class="penelope-brow penelope-brow-left"
+              d="M16 68.8q3.2-1.8 6.4 0"
+              fill="none"
+              stroke="#5a1d17"
+              stroke-width="1.3"
+              stroke-linecap="round"
+            />
+            <path
+              class="penelope-brow penelope-brow-right"
+              d="M25.6 68.8q3.2-1.8 6.4 0"
+              fill="none"
+              stroke="#5a1d17"
+              stroke-width="1.3"
+              stroke-linecap="round"
+            />
+            <path
+              id="penelope-mouth"
+              d="M19.5 91.5 Q24 96.5 28.5 91.5"
+              fill="none"
+              stroke="#4a1a14"
+              stroke-width="1.6"
+              stroke-linecap="round"
+            />
           </g>
         </svg>
-        <span class="desk-pen-say">Doodle</span>
       </button>
-      <div class="notebook">
-        <div id="notebook-status">Notebook: on this machine</div>
-        <code id="notebook-path">~/notebook/meetings/</code>
-        <button id="connect" class="inline">Connect slivingdoc</button>
-        <button id="signout" class="inline" hidden>Sign out</button>
-        <p id="signout-note" class="quiet" hidden>
-          <span id="signout-said"></span>
-          <a id="tokens-link" href="https://www.slivingdoc.dev/tokens" target="_blank" rel="noopener">Revoke the key on slivingdoc.dev</a>
-        </p>
-        <button id="install" class="inline install" type="button" hidden>Install Penelope as an app</button>
-        <a id="source-link" class="source-link" href="https://github.com/baalimago/penelope.ink" target="_blank" rel="noopener" title="github.com/baalimago/penelope.ink">Penelope is open source: read the code, or run your own</a>
-      </div>
-    </nav>
-
-    <div id="scrim" class="scrim" hidden></div>
-    <div class="content">
-      <ol id="loading" class="loading" aria-label="Getting Penelope ready" aria-live="polite"></ol>
-      <div id="setup" class="setup">
-        <section id="provider-card" class="card">
-          <h2>Connect an AI provider</h2>
-          <p class="quiet">The agent transcribes with speaker labels and writes the summary with it, billed to your account. This browser keeps the key for this site, and it reaches only the agent.</p>
-          <div class="row">
-            <button id="signin-openrouter" data-provider="openrouter" type="button" class="primary">Sign in with OpenRouter</button>
-          </div>
-          <p id="provider-wait" class="quiet" role="status" hidden>
-            <span id="provider-wait-text"></span>
-            <a id="provider-link" target="_blank" rel="noopener">Open the sign-in page</a>
-          </p>
-          <form id="key-form" data-provider="openai" class="row">
-            <label for="key-input" class="sr-only">OpenAI API key</label>
-            <input id="key-input" type="password" autocomplete="off" placeholder="or paste an OpenAI API key, sk-…">
-            <button class="secondary">Use key</button>
-          </form>
-          <p class="quiet">For OpenAI, create a key just for this on <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">OpenAI's API keys page</a>: a restricted key in a project with a small budget, which you delete when you are done, is the safest.</p>
-          <p id="provider-said" class="quiet" hidden>
-            <span id="provider-said-text"></span>
-            <a id="provider-manage" target="_blank" rel="noopener" hidden>Delete it on OpenRouter</a>
-          </p>
-        </section>
-        <form id="space-form" class="card space" hidden>
-          <label for="space"><strong>Choose a slivingdoc space</strong></label>
-          <p class="quiet">Your login reaches more than one space and has no default yet. Penelope keeps the meetings in the one you pick, and this browser remembers it.</p>
-          <div class="row">
-            <select id="space"></select>
-            <button class="primary">Use this space</button>
-          </div>
-        </form>
-        <section id="notebook-card" class="card" hidden>
-          <h2>First, sign in to slivingdoc</h2>
-          <p class="quiet">Keeps the notes in your hosted notebook, with history; without it, they stay in this browser. Sign in in a new tab, and the login stays in this browser.</p>
-          <div class="row">
-            <button id="signin" class="primary" data-needs="record">Sign in to slivingdoc</button>
-            <button id="not-now" type="button" class="inline">Not now, keep notes in this browser</button>
-          </div>
-          <div id="signin-wait" class="signin" hidden>
-            <p id="signin-text" class="quiet">Asking slivingdoc for a sign-in page…</p>
-            <p>Code <strong id="signin-code" class="code"></strong></p>
-            <a id="signin-link" target="_blank" rel="noopener">Open the sign-in page</a>
-          </div>
-          <form id="notebook-form" class="row">
-            <label for="token-input" class="sr-only">slivingdoc API token</label>
-            <input id="token-input" type="password" autocomplete="off" placeholder="or paste an API token from slivingdoc.dev">
-            <button class="secondary">Use token</button>
-          </form>
-        </section>
-      </div>
-
-      <p id="status" class="status" role="status"></p>
-
-      <section data-view="record" class="stack-lg">
-        <h1>New recording</h1>
-        <form id="record-form" class="card stack">
-          <label for="title">Meeting name</label>
-          <input id="title" placeholder="Daily sync">
-          <label for="details">Who is there, and anything else the agent should know</label>
-          <textarea id="details" rows="3" placeholder="Remote call with Ada and Grace"></textarea>
-          <fieldset id="people" class="people" hidden>
-            <legend>Who is in the meeting? Ticking narrows the naming by voice to those people; with nobody ticked, every confirmed voice in the library is tried.</legend>
-          </fieldset>
-          <p id="trust-note" class="quiet" hidden>The agent, <code id="trust-profile"></code>, comes from the clai hub (<a id="trust-link" target="_blank" rel="noopener">read what it runs</a>). Starting the recording trusts it in this browser.</p>
-          <aside class="precheck postit" aria-labelledby="precheck-title">
-            <h2 id="precheck-title">Before you record</h2>
-            <ol class="ticks">
-              <li><button id="access-mic" type="button" class="tick">Allow the mic</button></li>
-              <li><button id="access-computer" type="button" class="tick">Share a tab with your call</button></li>
-              <li><button id="access-sound" type="button" class="tick" disabled>Hear the call's sound</button></li>
-            </ol>
-            <div id="precheck-level" class="level" hidden><span></span></div>
-            <p id="precheck-hint" class="hint"></p>
-            <div class="row">
-              <button id="unshare" type="button" class="inline" hidden>Stop sharing</button>
-              <button id="mic-only" type="button" class="inline">Or skip it: record the mic only</button>
-            </div>
-          </aside>
-          <button class="primary">Start recording</button>
-          <p id="record-busy" class="quiet" hidden></p>
-          <p id="record-says" class="quiet">It records what the checklist set up: your mic, and the call's sound unless you skip it.</p>
-        </form>
-      </section>
-
-      <section data-view="meeting" class="stack-lg" hidden>
-        <div class="meeting-head">
-          <div>
-            <h1 id="meeting-title">Meeting</h1>
-            <div id="meeting-meta" class="quiet"></div>
-          </div>
-          <div class="actions">
-            <button id="stop" class="dark" hidden>
-              <svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2" fill="currentColor"/></svg>
-              Stop and summarize
-            </button>
-            <button id="popout" class="popout-open" title="Show what is in progress in a small window that stays on top" hidden>pop out</button>
-          </div>
-        </div>
-
-        <div id="tape" class="tape" role="group" aria-label="The meeting's recording" hidden>
-          <div class="tape-row">
-            <button id="tape-play" type="button" class="tape-play" aria-label="Play the recording">
-              <svg width="56" height="56" viewBox="0 0 56 56" aria-hidden="true">
-                <path class="tape-ring" d="M31 5.5C17 4 6 13.5 6.5 28c.4 12.5 10 22 22.5 21.5 12.6-.5 21.5-10.3 21-22.8C49.5 14.5 41 6.3 27 7.2"/>
-                <path class="tape-start" d="M22.5 18.5l16 9.6-16 9.4z"/>
-                <path class="tape-pause" d="M22.5 19v18M33.5 19v18"/>
-              </svg>
-            </button>
-            <div class="tape-track">
-              <svg class="tape-wave" viewBox="0 0 100 32" preserveAspectRatio="none" aria-hidden="true">
-                <defs><clipPath id="tape-inked" class="tape-inked"><rect x="-1" y="-2" width="0" height="36"/></clipPath></defs>
-                <path class="tape-pencil"/>
-                <path class="tape-ink" clip-path="url(#tape-inked)"/>
-                <line class="tape-head" x1="0" x2="0" y1="1" y2="31"/>
-              </svg>
-              <input id="tape-seek" class="tape-seek" type="range" min="0" max="0" step="any" value="0" aria-label="Where in the recording">
-            </div>
-            <span class="tape-time" aria-hidden="true"><span class="tape-at">0:00</span> of <span class="tape-length">0:00</span></span>
-          </div>
-          <div class="tape-links">
-            <a id="recording-download" class="tape-link" download hidden>Download the recording</a>
-            <button id="again" type="button" class="tape-link" hidden>Transcribe again</button>
-          </div>
-          <audio id="recording" preload="metadata"></audio>
-        </div>
-        <aside id="again-note" class="again-note" aria-labelledby="again-title" hidden>
-          <h2 id="again-title">Transcribe this meeting again?</h2>
-          <p id="again-said"></p>
-          <fieldset id="again-people" class="people" hidden>
-            <legend>Who is in the meeting? Ticked are the people its transcript names now; with nobody ticked, every confirmed voice in the library is tried.</legend>
-          </fieldset>
-          <div class="row">
-            <button id="again-yes" type="button" class="dark" data-needs="record">Transcribe again</button>
-            <button id="again-no" type="button" class="inline">Keep these notes</button>
-          </div>
-        </aside>
-
-        <div id="recbar" class="card recbar" hidden>
-          <span id="rec-state" class="rec-state">Starting the agent…</span>
-          <div id="wave" class="wave" aria-hidden="true"></div>
-          <span id="rec-inputs" class="quiet rec-inputs">Mic</span>
-        </div>
-        <p id="time-left" class="time-left" role="status" hidden><span id="time-left-text"></span></p>
-
-        <p id="rec-quiet" class="rec-quiet" role="alert" hidden>
-          <strong>Are you sharing the right tab?</strong>
-          Nothing has come from it for a minute. On the call's tab, use your browser's <em>Share this tab instead</em>, or check that the call isn't muted. The recording goes on.
-        </p>
-
-        <ol id="stages" class="stages" hidden></ol>
-
-        <form id="speakers" class="card speakers" hidden>
-          <h2>Who is speaking?</h2>
-          <p class="quiet">The transcript names the people whose voices this browser knows. Name the others, or correct a name, and the app puts the names in the transcript and the summary.</p>
-          <p id="speakers-said" class="quiet" role="status" hidden></p>
-          <div id="speaker-rows" class="stack"></div>
-          <label class="remember" hidden><input type="checkbox" id="remember"> Remember these voices, so later transcripts name them</label>
-          <button class="primary">Name the speakers</button>
-        </form>
-
-        <div id="agent" class="card" hidden>
-          <h2>The agent says</h2>
-          <p id="agent-text" class="prose"></p>
-          <p id="retry-note" class="quiet" hidden>The recording is kept in this browser, above. <button id="retry" type="button" class="secondary" data-needs="record">Try again with this recording</button></p>
-          <form id="reply-form" class="row">
-            <label for="reply" class="sr-only">Answer the agent</label>
-            <input id="reply" placeholder="Answer the agent, such as who Speaker A is">
-            <button class="secondary" data-needs="record">Send</button>
-          </form>
-        </div>
-
-        <div class="cards">
-          <article class="card summary">
-            <h2>Summary</h2>
-            <div id="summary" class="prose"></div>
-          </article>
-          <article class="card transcript">
-            <h2>Transcript</h2>
-            <p id="proof-hint" class="quiet proof-hint" hidden></p>
-            <p id="proof-keys" class="sr-only">Enter corrects the line, Space plays it, S changes who said it, the arrows move between lines.</p>
-            <div id="transcript" class="prose"></div>
-          </article>
-        </div>
-
-        <aside id="fixes" class="fixes" aria-labelledby="fixes-count" hidden>
-          <div id="fix-offer" class="fix-offer" hidden>
-            <p id="offer-what" class="offer-what"></p>
-            <p id="offer-where" class="hint"></p>
-            <div class="row">
-              <button id="offer-all" type="button" class="secondary">Fix them all</button>
-              <button id="offer-one" type="button" class="inline">Just this one</button>
-            </div>
-          </div>
-          <h2 id="fixes-count">1 correction</h2>
-          <p id="fixes-said" class="hint" role="status"></p>
-          <div class="row">
-            <button id="fixes-save" type="button" class="primary">Save</button>
-            <button id="fixes-undo" type="button" class="inline">Undo the last</button>
-            <button id="fixes-drop" type="button" class="inline">Drop them</button>
-          </div>
-        </aside>
-
-        <div id="saved" class="quiet" hidden>
-          Saved to the notebook as <code id="saved-path"></code><span class="history-sep"> · </span><button id="history" class="inline">history</button>
-        </div>
-        <ul id="history-list" class="history" hidden></ul>
-      </section>
-    </div>
-  </section>
-
-  <section class="hood" id="hood" aria-label="Under the hood">
-    <div class="hoodhead">
-      <strong>Under the hood</strong>
-      <div role="tablist">
-        <button role="tab" data-tab="activity" aria-selected="true">Activity</button>
-        <button role="tab" data-tab="io" aria-selected="false">Network and files</button>
-        <button role="tab" data-tab="terminal" aria-selected="false">Terminal</button>
-        <button role="tab" data-tab="runlogs" aria-selected="false">Run logs</button>
-      </div>
-      <button id="peek-close" class="close" aria-label="Close the peek">✕</button>
-    </div>
-    <div class="panels">
-      <div class="panel active" data-panel="activity">
-        <p id="hood-idle" class="quiet">Every button here runs a program on a WASIX v2 machine in this tab. Click one to see what it starts, opens and connects to.</p>
-        <div class="activity-col">
-          <h2>Processes</h2>
-          <ul id="hood-tree" class="tree"></ul>
-        </div>
-        <div class="activity-col">
-        <div class="loghead">
-          <h2>Events</h2>
-          <div class="filters">
-            <button data-kind="exec" aria-pressed="true" class="tag exec">exec</button>
-            <button data-kind="exit" aria-pressed="true" class="tag exit">exit</button>
-            <button data-kind="net" aria-pressed="true" class="tag net">net</button>
-            <button data-kind="fs" aria-pressed="true" class="tag fs">fs</button>
-            <button data-kind="audio" aria-pressed="true" class="tag audio">audio</button>
-          </div>
-        </div>
-        <ul id="hood-log" class="log"></ul>
-        <p id="hood-dropped" class="quiet" hidden></p>
-        </div>
-      </div>
-      <div class="panel" data-panel="io">
-        <h2>Connections</h2>
-        <table id="hood-net"><thead><tr><th>Host</th><th>Processes</th><th>Sent</th><th>Received</th></tr></thead><tbody></tbody></table>
-        <h2>Files written</h2>
-        <table id="hood-files"><thead><tr><th>Path</th><th>Processes</th><th>Written</th></tr></thead><tbody></tbody></table>
-      </div>
-      <div class="panel" data-panel="terminal">
-        <div id="terminal"></div>
-      </div>
-      <div class="panel" data-panel="runlogs">
-        <p id="runlogs-none" class="quiet">No run has a log yet. Each run's log is kept here, the newest ten, with no secrets and none of the model's words.</p>
-        <ul id="runlogs" class="runlogs"></ul>
-      </div>
-    </div>
-  </section>
-</main>
-<div id="notes" class="notes" aria-label="Problems" hidden></div>
-<aside id="update" class="update-note" role="status" aria-labelledby="update-title" hidden>
-  <h2 id="update-title">Penelope has been updated</h2>
-  <p>Reload to get the new version. Your meetings stay where they are.</p>
-  <div class="row">
-    <button id="update-reload" class="inline" type="button">Reload</button>
-    <button id="update-later" class="inline" type="button">Later</button>
-  </div>
-</aside>
-<aside id="penelope" class="penelope" aria-label="Penelope, your guide and red pen" hidden>
-  <section id="penelope-bubble" class="penelope-bubble" role="dialog" aria-labelledby="penelope-name" hidden>
-    <header class="penelope-head">
-      <strong id="penelope-name">Penelope</strong>
-      <span class="penelope-role">your guide and red pen</span>
-      <button id="penelope-close" type="button" class="penelope-close" aria-label="Put Penelope away">✕</button>
-    </header>
-    <ol id="penelope-log" class="penelope-log" aria-live="polite"></ol>
-    <p id="penelope-doing" class="penelope-doing" role="status" hidden></p>
-    <div id="penelope-ideas" class="penelope-ideas"></div>
-    <form id="penelope-form" class="penelope-form">
-      <div class="penelope-tools">
-        <button id="penelope-tools" type="button" class="penelope-tools-button" aria-haspopup="true" aria-expanded="false" aria-controls="penelope-tools-menu">+ Tools</button>
-        <div id="penelope-tools-menu" class="penelope-tools-menu" hidden>
-          <p class="penelope-tools-head">Let Penelope use <span class="penelope-beta">beta</span></p>
-          <ul id="penelope-tools-list" class="penelope-tools-list"></ul>
-        </div>
-      </div>
-      <label for="penelope-input" class="sr-only">Ask Penelope</label>
-      <textarea id="penelope-input" rows="1" placeholder="Ask Penelope anything"></textarea>
-      <button id="penelope-ask" class="penelope-ask" data-needs="agent">Ask</button>
-    </form>
-  </section>
-  <button id="penelope-pen" type="button" class="penelope-pen" aria-label="Talk to Penelope, the red pen" aria-expanded="false" aria-controls="penelope-bubble">
-    <svg width="48" height="172" viewBox="0 0 48 172" aria-hidden="true">
-      <g class="penelope-body">
-        <rect x="12" y="14" width="24" height="42" rx="7" fill="#a8352c"/>
-        <rect x="14.5" y="17" width="4.5" height="36" rx="2.2" fill="#c9554a"/>
-        <rect x="13" y="56" width="22" height="80" fill="#e2574c"/>
-        <rect x="13" y="56" width="6" height="80" fill="#f07c70"/>
-        <rect x="29" y="56" width="6" height="80" fill="#b83b31"/>
-        <rect x="12" y="53" width="24" height="5" rx="2" fill="#8e2a1f"/>
-        <path d="M33 17h3.5a1.5 1.5 0 0 1 1.5 1.5v42a3 3 0 0 1-3 3h-.5a1.5 1.5 0 0 1-1.5-1.5z" fill="#d6dae2" stroke="#9aa0ab" stroke-width=".8"/>
-        <rect x="14" y="136" width="20" height="10" rx="2" fill="#7a2620"/>
-        <path d="M15 146h18l-7 17h-4z" fill="#d6dae2"/>
-        <circle cx="24" cy="164.6" r="1.8" fill="#c0392b"/>
-        <g class="penelope-bow">
-          <path d="M24 13C15 2 4 4 7 13c2 7 10 6 17 0z" fill="#ff8fb8" stroke="#d94f86" stroke-width="1.2"/>
-          <path d="M24 13c9-11 20-9 17 0-2 7-10 6-17 0z" fill="#ff8fb8" stroke="#d94f86" stroke-width="1.2"/>
-          <path d="M22 15l-4 9 4-2zM26 15l4 9-4-2z" fill="#ff8fb8" stroke="#d94f86" stroke-width="1"/>
-          <rect x="20.5" y="9.5" width="7" height="7" rx="2.5" fill="#f06a9f" stroke="#d94f86" stroke-width="1"/>
-        </g>
-        <circle class="penelope-cheek" cx="15.8" cy="88" r="2.6" fill="#ffb3c7" opacity=".75"/>
-        <circle class="penelope-cheek" cx="32.2" cy="88" r="2.6" fill="#ffb3c7" opacity=".75"/>
-        <g class="penelope-eyes">
-          <ellipse cx="19.2" cy="79" rx="3.9" ry="4.9" fill="#fff"/>
-          <ellipse cx="28.8" cy="79" rx="3.9" ry="4.9" fill="#fff"/>
-          <circle class="penelope-pupil" cx="19.7" cy="80" r="2" fill="#2a1210"/>
-          <circle class="penelope-pupil" cx="29.3" cy="80" r="2" fill="#2a1210"/>
-          <path d="M15.6 76.2l-2.3-1.2M16.4 74.6l-1.6-2M18.2 73.6l-.5-2.3M32.4 76.2l2.3-1.2M31.6 74.6l1.6-2M29.8 73.6l.5-2.3" stroke="#2a1210" stroke-width="1.1" stroke-linecap="round"/>
-        </g>
-        <path class="penelope-lids" d="M15.4 79q3.8 3.2 7.6 0M25 79q3.8 3.2 7.6 0M15.6 80.6l-1.8 1.4M32.4 80.6l1.8 1.4" fill="none" stroke="#2a1210" stroke-width="1.3" stroke-linecap="round"/>
-        <g class="penelope-zs"><text x="2" y="74">z</text><text x="0" y="61">z</text></g>
-        <path class="penelope-brow penelope-brow-left" d="M16 68.8q3.2-1.8 6.4 0" fill="none" stroke="#5a1d17" stroke-width="1.3" stroke-linecap="round"/>
-        <path class="penelope-brow penelope-brow-right" d="M25.6 68.8q3.2-1.8 6.4 0" fill="none" stroke="#5a1d17" stroke-width="1.3" stroke-linecap="round"/>
-        <path id="penelope-mouth" d="M19.5 91.5 Q24 96.5 28.5 91.5" fill="none" stroke="#4a1a14" stroke-width="1.6" stroke-linecap="round"/>
-      </g>
-    </svg>
-  </button>
-</aside>
-<div class="players"></div>
-<script type="module" src="./main.js"></script>
-<script type="module" src="./handwriting.js"></script>
-<script type="module" src="./arrival.js"></script>
-<script type="module" src="./drawer.js"></script>
-<script type="module" src="./install.js"></script>
+    </aside>
+    <div class="players"></div>
+    <script type="module" src="./main.js"></script>
+    <script type="module" src="./handwriting.js"></script>
+    <script type="module" src="./arrival.js"></script>
+    <script type="module" src="./drawer.js"></script>
+    <script type="module" src="./install.js"></script>
+  </body>
+</html>
