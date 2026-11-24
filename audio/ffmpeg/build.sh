@@ -18,6 +18,15 @@ lame=$(cd "$4" && pwd)
 here=$(cd "$(dirname "$0")" && pwd)
 jobs=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)
 
+# configure writes the out-of-tree Makefile only when there is none (ffmpeg-5.1.6
+# configure:7616) and the dependency files it writes name absolute paths, so a build directory
+# left by a checkout at another path keeps pointing at the old source tree and make stops with
+# "No rule to make target". Start clean when the source path moved.
+if [ -f "$build/Makefile" ] && ! grep -qx "include $src/Makefile" "$build/Makefile"; then
+  rm -rf "$build"
+  mkdir -p "$build"
+fi
+
 # configure wants the compiler as one command.
 printf '#!/bin/sh\nexec "%s/bin/clang" --target=wasm32-wasi --sysroot="%s/share/wasi-sysroot" "$@"\n' \
   "$sdk" "$sdk" > "$build/wasi-cc"

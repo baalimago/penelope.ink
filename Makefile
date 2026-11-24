@@ -115,6 +115,11 @@ $(WASI_SDK):
 		| tar xz -C $(@D)
 
 $(LIBGIT2)/lib/libgit2.a: $(WASI_SDK) $(wildcard $(WASI_COMPAT)/*.h) | submodules
+	@# cmake records absolute paths in its cache, so a build directory left by a checkout at
+	@# another path fails with "does not match the source ... used to generate cache" (the same
+	@# trap audio/ffmpeg/build.sh clears).
+	@grep -qxF 'CMAKE_HOME_DIRECTORY:INTERNAL=$(CURDIR)/components/libgit2' $(LIBGIT2)/build/CMakeCache.txt \
+		|| rm -rf $(LIBGIT2)/build
 	cmake -S components/libgit2 -B $(LIBGIT2)/build -DCMAKE_BUILD_TYPE=Release \
 		-DCMAKE_TOOLCHAIN_FILE=$(WASI_SDK)/share/cmake/wasi-sdk.cmake -DWASI_SDK_PREFIX=$(WASI_SDK) \
 		-DCMAKE_C_FLAGS="-DNO_MMAP $(WASI_CFLAGS)" -DCMAKE_INSTALL_PREFIX=$(LIBGIT2) \

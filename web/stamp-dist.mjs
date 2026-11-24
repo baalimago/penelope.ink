@@ -12,8 +12,9 @@ if (!root) {
   process.exit(2);
 }
 
-// What the page says before it is stamped, as `make dev` serves it.
-const UNSTAMPED = '<meta name="penelope-version" content="dev">';
+// What the page says before it is stamped, as `make dev` serves it. A void element may be written
+// self-closing, so the tag ends with either `>` or `/>`.
+const UNSTAMPED = /<meta name="penelope-version" content="dev"\s*\/?>/g;
 
 async function* files(dir) {
   for (const entry of await readdir(dir, { withFileTypes: true })) {
@@ -35,10 +36,10 @@ const version = hash.digest("hex").slice(0, 16);
 
 const page = path.join(root, "index.html");
 const html = await readFile(page, "utf8");
-if (html.split(UNSTAMPED).length !== 2) {
-  console.error(`stamp-dist: index.html must say ${UNSTAMPED} exactly once`);
+if ([...html.matchAll(UNSTAMPED)].length !== 1) {
+  console.error('stamp-dist: index.html must say <meta name="penelope-version" content="dev"> exactly once');
   process.exit(1);
 }
-await writeFile(page, html.replace(UNSTAMPED, `<meta name="penelope-version" content="${version}">`));
+await writeFile(page, html.replace(UNSTAMPED, `<meta name="penelope-version" content="${version}" />`));
 await writeFile(path.join(root, "version.json"), `${JSON.stringify({ version })}\n`);
 console.log(`version ${version} of ${names.length} files`);
