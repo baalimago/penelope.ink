@@ -319,6 +319,32 @@ export class Penelope {
     this.toggle(true);
   }
 
+  // Asks `text` in the bubble with a yes and a no; a yes runs `act`, and she says what it resolves to ({say, mood}).
+  confirm(text, [yes, no], act) {
+    const said = { who: "her", text, mood: "unsure" };
+    const answered = () => {
+      said.actions = null;
+      this.render();
+    };
+    said.actions = [[yes, async () => {
+      answered();
+      this.working(true, "Deleting");
+      let result;
+      try {
+        result = await act();
+      } catch (error) {
+        result = { say: `My ink ran out: ${error.message}`, mood: "sorry" };
+      }
+      this.log.push({ who: "her", text: result.say, mood: result.mood });
+      this.mood = result.mood;
+      this.working(false);
+    }], [no, answered]];
+    this.log.push(said);
+    this.mood = "unsure";
+    this.toggle(true);
+    this.render();
+  }
+
   async send(text) {
     const request = text.trim();
     if (!request || this.busy) return;

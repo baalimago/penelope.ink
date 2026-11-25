@@ -540,6 +540,41 @@ export function canTranscribeAgain(c, kept, jobs) {
   return Boolean(c && kept) && !jobs.some((j) => !j.done && [j.again, j.path, j.filed].includes(c.path));
 }
 
+// Whether the open meeting `c` can be deleted: no run is about it.
+export function canDelete(c, jobs) {
+  return Boolean(c) && !jobs.some((j) => !j.done && [j.again, j.path, j.filed].includes(c.path));
+}
+
+// What the eraser asks before it deletes a meeting: `recorded` when this browser keeps its recording,
+// `corrections` how many unsaved ones go with it.
+export const deleteWarning = (connected, recorded, corrections = 0) =>
+  `Its summary and transcript leave the notebook${recorded ? ", and its recording is erased from this browser" : ""}. ` +
+  (corrections ? "Your unsaved corrections go with them. " : "") +
+  (connected ? `The notes stay in the notebook's history on slivingdoc${recorded ? "; the recording is gone for good." : "."}`
+    : "The notebook in this browser keeps no history, so it is gone for good.");
+
+// “A”, “B” and “C”.
+const quotedList = (titles) => titles.map((t) => `“${t}”`).join(", ").replace(/, ([^,]*)$/, " and $1");
+
+// What Penelope asks before the app deletes the meetings she named, and the two answers.
+export function deleteAsk(titles, connected) {
+  const one = titles.length === 1;
+  return {
+    text: `Shall I delete ${quotedList(titles)}? ${one ? "Its" : "Their"} notes leave the notebook, and any recording this browser keeps of ${one ? "it" : "them"} is erased for good. ` +
+      (connected ? "The notes stay in the notebook's history on slivingdoc." : "The notebook in this browser keeps no history, so the notes are gone for good too."),
+    yes: one ? "Delete it" : `Delete all ${titles.length}`,
+    no: one ? "Keep it" : "Keep them",
+  };
+}
+
+// What Penelope says once the app deleted `gone` and could not delete `kept` (titles).
+export function deleteSaid(gone, kept) {
+  return {
+    say: [gone.length ? `Deleted ${quotedList(gone)}.` : "", kept.length ? `I could not delete ${quotedList(kept)}; the note under the peek says why.` : ""].filter(Boolean).join(" "),
+    mood: kept.length ? "sorry" : "glad",
+  };
+}
+
 // Penelope works on copies of the open meeting's files, one directory a meeting, so -dre goes on with it.
 const PENELOPE_HOME = "/tmp/penelope";
 // Her working directory: app.md, and the copies of the meeting in focus.
@@ -673,6 +708,9 @@ export class Minutes {
     this.player = new Player(this.$("#tape"));
     // The meeting whose Transcribe again waits for a yes.
     this.asking = null;
+    // The meeting whose eraser waits for a yes, and whether one is being deleted.
+    this.deleting = null;
+    this.removing = false;
     this.penelopeBusy = false;
     this.penelopeTalked = false;
     this.handFixes = 0;
@@ -793,10 +831,27 @@ export class Minutes {
     $("#again").onclick = () => {
       if (this.blocked()) return;
       this.asking = this.current?.path ?? null;
+      this.deleting = null;
       this.render();
       this.drawAgainPeople();
       $("#again-yes").focus();
     };
+    // The eraser asks first, with the keyboard on the answer that keeps the meeting.
+    $("#delete").onclick = () => {
+      if (this.penelopeBusy) return this.penelope.nudge("Hang on, I'm still writing.");
+      this.deleting = this.current?.path ?? null;
+      this.asking = null;
+      this.render();
+      $("#delete-no").focus();
+    };
+    $("#delete-yes").onclick = () => this.deleteMeeting();
+    const spare = () => {
+      this.deleting = null;
+      this.render();
+      $("#delete").focus();
+    };
+    $("#delete-no").onclick = spare;
+    $("#delete-note").onkeydown = (event) => event.key === "Escape" && spare();
     $("#again-yes").onclick = () => this.blocked() || this.transcribeAgain();
     const keep = () => {
       this.asking = null;
@@ -860,7 +915,7 @@ export class Minutes {
   // Whether a reload now would stop something under way: a recording or transcription, the
   // naming of the speakers, a save, or Penelope or the agent writing.
   working() {
-    return running(this.jobs) || this.choosing || this.saving || this.penelopeBusy || this.asking !== null;
+    return running(this.jobs) || this.choosing || this.saving || this.penelopeBusy || this.asking !== null || this.deleting !== null || this.removing;
   }
 
   // True when corrections wait to be saved or dropped: the post-it says so, with a wiggle.
@@ -1574,6 +1629,7 @@ export class Minutes {
     this.saveFailed = false;
     this.dropping = false;
     this.historyItems = null;
+    this.deleting = null;
     this.status("");
     this.show("meeting", !followUp);
     await this.loadReview();
@@ -1670,6 +1726,95 @@ export class Minutes {
     const line = this.agentLine(withPeople(this.config.query(c.title, againText(audio, c.path), this.connected), voices), null, profile, voices);
     const { status, reply, problem } = await this.runAgent("Transcribe again", line, { job });
     await this.finish(job, status, reply, problem);
+  }
+
+  // The open meeting, gone, once the eraser's post-it said yes.
+  async deleteMeeting() {
+    const c = this.current;
+    this.deleting = null;
+    if (!canDelete(c, this.jobs) || this.removing || this.saving || this.penelopeBusy) return this.render();
+    this.removing = true;
+    this.render();
+    try {
+      if (await this.eraseMeeting(c)) await this.refresh(true);
+    } finally {
+      this.removing = false;
+      this.render();
+    }
+  }
+
+  // The filed meeting `m`, gone: its notes from the notebook, and from this browser its recording and
+  // kept segments. A commit that fails puts the notes back and keeps the rest. Resolves whether it is gone.
+  async eraseMeeting(m) {
+    const c = this.current?.path === m.path ? this.current : null;
+    if (c) this.proof.close(false);
+    const notes = [m.path, transcriptOf(m.path)];
+    // What a failed commit puts back.
+    const raw = !this.connected ? null : c?.raw ?? (await this.readMeeting(m.path, "Read the meeting", true));
+    if (this.connected && !raw) {
+      this.fail("The meeting could not be deleted", "It could not be read from the notebook.");
+      return false;
+    }
+    // The recording where a run of this tab left it on the machine, and where Transcribe again put it.
+    const audio = this.jobs.filter((j) => j.audioPath && [j.filed, j.again].includes(m.path)).map((j) => j.audioPath);
+    const line = `${this.cd()} && rm -f ${[...new Set([...notes, againPath(m.path), ...audio])].map(quote).join(" ")}`;
+    const { status, action } = await this.run(`Delete ${m.title}`, line, { followUp: true });
+    if (status !== 0) {
+      this.fail("The meeting could not be deleted", "Its files are still in the notebook.", null, this.runlog.cause(action));
+      return false;
+    }
+    const ran = {};
+    if (this.connected && !(await this.commit(`Minutes: deleted ${m.title}`, null, ran))) {
+      await this.writeFiles([[notes[0], raw.summary], [notes[1], raw.transcript]].filter(([, text]) => text), true, "Put the meeting back");
+      this.fail("slivingdoc could not delete the meeting", "The notebook is as it was, and the recording is kept.", null, this.runlog.cause(ran.action));
+      return false;
+    }
+    await this.notebook?.remove(notes);
+    await this.recordings.remove(m.path);
+    await this.segments?.remove(m.path);
+    this.meetings = this.meetings.filter((x) => x.path !== m.path);
+    if (this.current === c && c) {
+      this.current = null;
+      this.recording = null;
+      this.fixes = null;
+      this.offer = null;
+      this.saveSaid = "";
+      this.historyItems = null;
+      this.reviewing = null;
+      await this.showRecording(null);
+      this.show("record", true);
+      this.status(`Deleted “${m.title}”.`);
+    }
+    return true;
+  }
+
+  // Penelope's delete_meeting: she asks once in her bubble for all the meetings her answer named,
+  // and a yes deletes them as the eraser would.
+  penelopeDelete(paths) {
+    const named = [...new Set(paths)].map((path) => this.meetings.find((m) => m.path === path)).filter((m) => canDelete(m, this.jobs));
+    if (named.length === 0) return this.penelope.nudge("I found no meeting I can delete there: it is not in the notebook, or a run is working on it.");
+    const titles = (list) => list.map((m) => (this.current?.path === m.path ? this.titleOf(this.current) : m.title));
+    const { text, yes, no } = deleteAsk(titles(named), this.connected);
+    this.penelope.confirm(text, [yes, no], async () => {
+      if (this.removing || this.saving || this.penelopeBusy) return { say: "Hang on, the app is busy. Ask me again in a moment.", mood: "sorry" };
+      this.removing = true;
+      this.deleting = null;
+      this.render();
+      const gone = [];
+      const kept = [];
+      try {
+        for (const m of named) {
+          const title = titles([m])[0];
+          const can = canDelete(this.meetings.find((x) => x.path === m.path), this.jobs);
+          (can && (await this.eraseMeeting(m)) ? gone : kept).push(title);
+        }
+        if (gone.length) await this.refresh(true);
+      } finally {
+        this.removing = false;
+        this.render();
+      }
+      return deleteSaid(gone, kept);
+    });
   }
 
   async history() {
@@ -2193,7 +2338,7 @@ export class Minutes {
     }
   }
 
-  // What Penelope may have the app do now: press a button that shows, or open a filed meeting.
+  // What Penelope may have the app do now: press a button that shows, or open or delete a filed meeting.
   penelopeActions() {
     const shows = (selector) => this.$(selector)?.getClientRects().length > 0;
     const pressing = Object.entries(PENELOPE_BUTTONS).filter(([, [selector]]) => shows(selector)).map(([name, [selector, what]]) => ({
@@ -2207,12 +2352,20 @@ export class Minutes {
         if (m) this.visit(m);
       },
     };
-    return [...pressing, ...(this.meetings.length > 0 ? [open] : [])];
+    // Taken together by penelopeDo, so the user is asked once for all of them.
+    const erase = {
+      name: "delete_meeting",
+      what: "delete a filed meeting for good, its summary, transcript and recording; give its path, one action for each meeting. " +
+        "The app asks the user once, in your bubble, before it deletes any",
+    };
+    return [...pressing, ...(this.meetings.length > 0 ? [open, erase] : [])];
   }
 
   // Takes the actions Penelope's answer names, of those she was offered.
   penelopeDo(offered, asked) {
-    for (const a of asked) offered.find((o) => o.name === a.action)?.run(a);
+    for (const a of asked) offered.find((o) => o.name === a.action)?.run?.(a);
+    const erase = offered.some((o) => o.name === "delete_meeting") ? asked.filter((a) => a.action === "delete_meeting") : [];
+    if (erase.length > 0) this.penelopeDelete(erase.map((a) => a.meeting ?? this.current?.path));
   }
 
   // The meeting Penelope may correct: the filed one on the pad, with a transcript, while nothing records it.
@@ -3141,7 +3294,13 @@ export class Minutes {
       $("#again-said").textContent = againWarning(this.connected);
       $("#again-yes").textContent = this.needsTrust ? "Trust the agent and transcribe again" : "Transcribe again";
     }
-    const replacing = Boolean(c) && this.jobs.some((j) => !j.done && j.again === c.path);
+    const erasable = canDelete(c, this.jobs);
+    $("#delete").hidden = !erasable;
+    $("#delete").disabled = this.removing;
+    const erasing = erasable && !this.removing && this.deleting === c.path;
+    $("#delete-note").hidden = !erasing;
+    if (erasing) $("#delete-said").textContent = deleteWarning(this.connected, Boolean(this.player.blob), this.fixes?.count ?? 0);
+    const replacing = Boolean(c) && (this.removing || this.jobs.some((j) => !j.done && j.again === c.path));
     $(".cards").inert = replacing;
     $(".cards").classList.toggle("replacing", replacing);
   }

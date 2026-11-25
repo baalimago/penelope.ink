@@ -516,6 +516,31 @@
                 >
                   pop out
                 </button>
+                <button
+                  id="delete"
+                  type="button"
+                  class="erase"
+                  aria-label="Delete this meeting"
+                  title="Delete this meeting: its notes and its recording"
+                  hidden
+                >
+                  <svg
+                    width="28"
+                    height="28"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.7"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M8.5 19.5 3.6 14.6a1.4 1.4 0 0 1 0-2l8.5-8.5a1.4 1.4 0 0 1 2 0l5.8 5.8a1.4 1.4 0 0 1 0 2l-7.6 7.6z"
+                    />
+                    <path d="M7.4 8.8l7.8 7.8M8.5 19.5H21" />
+                  </svg>
+                </button>
               </div>
             </div>
 
@@ -615,6 +640,23 @@
                 </button>
                 <button id="again-no" type="button" class="inline">
                   Keep these notes
+                </button>
+              </div>
+            </aside>
+            <aside
+              id="delete-note"
+              class="again-note"
+              aria-labelledby="delete-title"
+              hidden
+            >
+              <h2 id="delete-title">Delete this meeting?</h2>
+              <p id="delete-said"></p>
+              <div class="row">
+                <button id="delete-yes" type="button" class="dark">
+                  Delete it
+                </button>
+                <button id="delete-no" type="button" class="inline">
+                  Keep the meeting
                 </button>
               </div>
             </aside>

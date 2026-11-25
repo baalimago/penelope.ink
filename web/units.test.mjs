@@ -45,7 +45,7 @@ import { Installer } from "./www/install.js";
 import { NotebookKeeper, restoreBatches } from "./www/notebookkeeper.js";
 import { pageOf, turnsBack, turnsPage } from "./www/pageturn.js";
 import { AGAIN_MS, IDLE_MS, Updates } from "./www/update.js";
-import { againPath, againText, againWarning, canTranscribeAgain, retitled } from "./www/minutes.js";
+import { againPath, againText, againWarning, canDelete, canTranscribeAgain, deleteAsk, deleteSaid, deleteWarning, retitled } from "./www/minutes.js";
 import { VoiceKeeper } from "./www/voicekeeper.js";
 import { SegmentKeeper } from "./www/segmentkeeper.js";
 import { sameTitle, spokeIn } from "./www/people.js";
@@ -1926,6 +1926,36 @@ test("a meeting can be transcribed again while this browser keeps its recording 
   assert.equal(canTranscribeAgain(c, true, [{ done: false, recording: true, path: undefined }, { done: false, again: "meetings/summaries/x.md" }]), true);
 });
 
+test("a meeting can be deleted while no run is about it", () => {
+  const c = { path: "meetings/summaries/2026-11-16T10-00Z_first.md" };
+  assert.equal(canDelete(null, []), false);
+  assert.equal(canDelete(c, []), true);
+  for (const about of [{ again: c.path }, { path: c.path }, { filed: c.path }]) {
+    assert.equal(canDelete(c, [{ done: false, ...about }]), false, JSON.stringify(about));
+    assert.equal(canDelete(c, [{ done: true, ...about }]), true, JSON.stringify(about));
+  }
+  assert.equal(canDelete(c, [{ done: false, again: "meetings/summaries/x.md" }]), true);
+});
+
+test("Penelope asks once for the meetings she would delete, and says what became of them", () => {
+  const one = deleteAsk(["Daily sync"], true);
+  assert.match(one.text, /^Shall I delete “Daily sync”\? Its notes leave the notebook, and any recording this browser keeps of it is erased for good\. The notes stay in the notebook's history on slivingdoc\.$/);
+  assert.deepEqual([one.yes, one.no], ["Delete it", "Keep it"]);
+  const three = deleteAsk(["A", "B", "C"], false);
+  assert.match(three.text, /^Shall I delete “A”, “B” and “C”\? Their notes .* of them is erased for good\. The notebook in this browser keeps no history, so the notes are gone for good too\.$/);
+  assert.deepEqual([three.yes, three.no], ["Delete all 3", "Keep them"]);
+  assert.deepEqual(deleteSaid(["A", "B"], []), { say: "Deleted “A” and “B”.", mood: "glad" });
+  assert.deepEqual(deleteSaid(["A"], ["B"]), { say: "Deleted “A”. I could not delete “B”; the note under the peek says why.", mood: "sorry" });
+  assert.equal(deleteSaid([], ["B"]).mood, "sorry");
+});
+
+test("the eraser says what goes, and what the notebook's history keeps", () => {
+  assert.match(deleteWarning(true, true), /^Its summary and transcript leave the notebook, and its recording is erased from this browser\. The notes stay in the notebook's history on slivingdoc; the recording is gone for good\.$/);
+  assert.match(deleteWarning(true, false), /^Its summary and transcript leave the notebook\. The notes stay in the notebook's history on slivingdoc\.$/);
+  assert.match(deleteWarning(false, true), /erased from this browser\. The notebook in this browser keeps no history, so it is gone for good\.$/);
+  assert.match(deleteWarning(false, false, 2), /leave the notebook\. Your unsaved corrections go with them\. The notebook in this browser/);
+});
+
 test("the doodles scribble only what the run in view did", () => {
   const log = [
     { kind: "exec", text: "ffprobe of the other run", action: "minutes:Record#1" },
@@ -2144,6 +2174,7 @@ test("a segment keeper with no storage keeps nothing", async () => {
     const keeper = new SegmentKeeper(indexedDB);
     assert.equal(await keeper.keep(path, segments, naming, [{ name: "Christoph", clip: "4be07c19a2f1" }]), false);
     assert.equal(await keeper.get(path), null);
+    assert.equal(await keeper.remove(path), false);
   }
 });
 
@@ -2708,6 +2739,7 @@ test("without IndexedDB the keeper keeps nothing and says so", async () => {
   const keeper = new NotebookKeeper(undefined);
   assert.equal(await keeper.keep([["meetings/summaries/a.md", "a"]]), false);
   assert.equal(await keeper.all(), null);
+  assert.equal(await keeper.remove(["meetings/summaries/a.md"]), false);
 });
 
 // A meeting's name is its notes' front matter title (Minutes.rename).

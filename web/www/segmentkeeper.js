@@ -216,4 +216,34 @@ export class SegmentKeeper {
       return null;
     }
   }
+
+  /**
+   * Forgets what is kept for a meeting, when the meeting is deleted.
+   *
+   * - remove.1 — After it resolves true, `get(path)` resolves null; every
+   *   other path's stay as they were.
+   * - remove.2 — For a path that was never kept it resolves true.
+   * - remove.3 — With no `indexedDB`, or a database that cannot be opened or
+   *   written, it resolves false.
+   *
+   * @param {string} path  the meeting's summary path
+   * @returns {Promise<boolean>} true when nothing is kept under the path
+   */
+  async remove(path) {
+    try {
+      const db = await open(this.#indexedDB, true);
+      if (!db) return false;
+      try {
+        const tx = db.transaction(MEETINGS, "readwrite");
+        const end = finished(tx);
+        tx.objectStore(MEETINGS).delete(path);
+        await end;
+        return true;
+      } finally {
+        db.close();
+      }
+    } catch {
+      return false;
+    }
+  }
 }

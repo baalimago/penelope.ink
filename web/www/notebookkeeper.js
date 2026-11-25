@@ -33,6 +33,23 @@ export class NotebookKeeper {
     });
   }
 
+  // Forgets each path in one transaction; resolves whether all are gone.
+  async remove(paths) {
+    const db = await this.db;
+    if (!db) return false;
+    return new Promise((resolve) => {
+      try {
+        const tx = db.transaction(STORE, "readwrite");
+        for (const path of paths) tx.objectStore(STORE).delete(path);
+        tx.oncomplete = () => resolve(true);
+        tx.onerror = () => resolve(false);
+        tx.onabort = () => resolve(false);
+      } catch {
+        resolve(false);
+      }
+    });
+  }
+
   // Every kept [path, text], or null when nothing can be read.
   async all() {
     const db = await this.db;

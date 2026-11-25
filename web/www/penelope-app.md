@@ -119,6 +119,12 @@ Chrome or Edge 137 or later on a computer; Firefox and Safari cannot run the mac
   renames the meeting in both notes' front matter, Escape keeps the name. The rename is a correction
   on the post-it (two: one in each note), saved, undone or dropped with the others. The file names
   stay as they are.
+- Deleting the meeting: the eraser at the top right of the meeting, beside its title. A post-it asks
+  first: **Delete it** or **Keep the meeting**. Deleting takes the summary and the transcript out of
+  the notebook and erases the recording this browser keeps, with any unsaved corrections. Signed in
+  to slivingdoc the notes stay in the notebook's history there; the recording, and a notebook kept
+  in this browser, are gone for good. The eraser is away while a run works on the meeting. Penelope
+  can delete meetings too, several at once: she asks in her bubble first.
 - The corrections post-it counts them: **Save** files them in the notebook, **Undo the last**,
   **Drop them**.
 - "Saved to the notebook as …": the meeting's files in the notebook.
@@ -138,6 +144,9 @@ Chrome or Edge 137 or later on a computer; Firefox and Safari cannot run the mac
   take back with **Undo these**. With none open she answers about the app and the notebook.
 - She can have the app transcribe the open meeting again, open a meeting, or show New recording,
   each as its own button would; the user confirms what that button asks.
+- She can delete filed meetings, the open one or others, to tidy the notebook: her bubble asks once
+  for all of them, **Delete it** or **Keep it** (**Delete all 3**, **Keep them**), and a yes deletes
+  each as the eraser would. Asking her something else instead keeps them.
 - She needs a connected AI provider.
 - **+ Tools** (beta), left of her Ask box, lets her use the user's own services. Linear is the
   first: ticking it opens Linear's sign-in in a new tab, and once the user approves Penelope there,

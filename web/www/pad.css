@@ -487,7 +487,15 @@ body:not(.app-arrived) .top .chips { visibility: hidden; }
 .content .again-note h2 { margin: 0 0 4px; font: 700 27px/var(--rule) var(--hand); color: var(--pad-accent); }
 .again-note .row { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 10px; }
 .content .again-note .inline { height: auto; padding: 0; border: 0; background: none; font: 20px var(--hand); color: #5a3a14; text-decoration: underline; cursor: var(--pen-tap); }
+/* The eraser at the meeting's head deletes it (Minutes.deleteMeeting); the same post-it asks first. */
+.content .erase { display: inline-flex; align-items: center; justify-content: center; align-self: center; width: 44px; height: 44px; padding: 0; border: 0; background: none; color: #75705f; cursor: var(--pen-tap); }
+.content .erase[hidden] { display: none; }
+.content .erase:hover { color: var(--pad-accent); }
+.content .erase:disabled { opacity: .4; }
+.erase:focus-visible { outline: 2px dashed rgba(192, 57, 43, .55); outline-offset: 2px; }
 @media (prefers-reduced-motion: no-preference) {
+  .erase svg { transition: transform .2s ease; }
+  .erase:hover svg { transform: rotate(-12deg); }
   .tape-play svg { transition: transform .2s ease; }
   .tape-play:hover svg { transform: rotate(-8deg); }
   .tape-play:active svg { transform: rotate(-8deg) scale(.94); }

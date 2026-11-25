@@ -1102,7 +1102,7 @@ async function checkGuide(page) {
   await page.waitForFunction(() => document.querySelector("#penelope-bubble").hidden, null, { timeout: 5_000 }).catch(() => {});
   const state = await page.evaluate(() => ({ away: document.querySelector("#penelope-bubble").hidden, onDesk: !document.querySelector("#penelope").hidden, title: document.title }));
   console.log(`Penelope, the guide: ${JSON.stringify({ shown, said, ...state })}`);
-  if (!shown || !said.includes("New recording") || !state.away || !state.onDesk || state.title !== "Penelope") {
+  if (!shown || !said.includes("New recording") || !state.away || !state.onDesk || !state.title.startsWith("Penelope")) {
     console.error("\nFAIL: Penelope did not greet with the guide at the start, Got it did not put it away, or the title is not hers");
     process.exitCode = 1;
   }
@@ -2121,6 +2121,101 @@ async function checkRename(page) {
   if (pending.title !== name || !/^[12] corrections?$/.test(pending.count)) fail(`before Save the title read ${JSON.stringify(pending.title)} and the post-it ${JSON.stringify(pending.count)}`);
   if (saved.summary !== name || (saved.transcript !== null && saved.transcript !== name)) fail(`the notes' titles are ${JSON.stringify(saved)}`);
   if (saved.listed !== name || saved.shown !== name) fail(`the sidebar shows ${JSON.stringify(saved.listed)} and the page ${JSON.stringify(saved.shown)}`);
+}
+
+// The eraser at a meeting's head: a post-it asks first, Keep the meeting leaves everything, and
+// Delete it takes the notes off the machine and out of this browser with the recording and the
+// kept segments, so the meeting is not listed and a reload does not bring it back.
+async function checkDelete(page) {
+  const fail = (why) => {
+    console.error(`\nFAIL: deleting a meeting: ${why}`);
+    process.exitCode = 1;
+  };
+  const path = "meetings/summaries/2026-11-20T09-00Z_to-delete.md";
+  const state = () => page.evaluate(async (p) => {
+    const m = window.minutes;
+    const files = await m.readMeeting(p, "Read the meeting", true);
+    return {
+      files: Boolean(files?.summary || files?.transcript),
+      notes: ((await m.notebook.all()) ?? []).filter(([kept]) => kept.includes("to-delete")).length,
+      recording: Boolean(await m.recordings.get(p)),
+      segments: Boolean(await m.segments.get(p)),
+      listed: m.meetings.some((x) => x.path === p),
+    };
+  }, path);
+  await page.evaluate(async (p) => {
+    const m = window.minutes;
+    m.dismissAll?.();
+    const transcript = p.replace("summaries", "transcripts");
+    await m.run("check", `${m.cd()} && mkdir -p meetings/summaries meetings/transcripts && ` +
+      `printf "%s\\n" --- "title: To delete" --- "Soon gone." > ${p} && printf "%s\\n" "[0:00] Speaker A: goodbye then" > ${transcript}`, { followUp: true });
+    await m.keepMeeting(p);
+    await m.recordings.put(p, new Blob([new Uint8Array(64)], { type: "audio/wav" }));
+    await m.segments.keep(p, [{ start: 0, end: 1, speaker: "A", text: "goodbye then" }], null, []);
+    await m.refresh(true);
+    await m.open(m.meetings.find((x) => x.path === p));
+  }, path);
+  const before = await state();
+  await page.click("#delete");
+  const asked = await page.evaluate(() => ({
+    note: !document.querySelector("#delete-note").hidden,
+    said: document.querySelector("#delete-said").textContent,
+    focus: document.activeElement?.id,
+  }));
+  await page.click("#delete-no");
+  const spared = { ...(await state()), note: await page.evaluate(() => !document.querySelector("#delete-note").hidden) };
+  await page.click("#delete");
+  await page.click("#delete-yes");
+  const gone = await page
+    .waitForFunction(() => !window.minutes.removing && window.minutes.view === "record" && window.minutes.current === null, null, { timeout: 30_000 })
+    .then(() => true, () => false);
+  const after = { ...(await state()), status: await page.evaluate(() => document.querySelector("#status").textContent), eraser: await page.evaluate(() => document.querySelector("#delete").hidden) };
+  console.log(`Minutes, deleting a meeting: ${JSON.stringify({ before, asked, spared, gone, after })}`);
+  if (!before.files || before.notes !== 2 || !before.recording || !before.segments || !before.listed) return fail(`the meeting to delete was not set up: ${JSON.stringify(before)}`);
+  if (!asked.note || !/recording is erased from this browser/.test(asked.said) || !/gone for good/.test(asked.said) || asked.focus !== "delete-no") fail("the eraser did not ask first, saying what goes, with the keyboard on Keep the meeting");
+  if (spared.note || JSON.stringify({ ...spared, note: undefined }) !== JSON.stringify({ ...before, note: undefined })) fail(`Keep the meeting did not leave it as it was: ${JSON.stringify(spared)}`);
+  if (!gone || after.files || after.notes !== 0 || after.recording || after.segments || after.listed) fail(`Delete it left something of the meeting: ${JSON.stringify(after)}`);
+  if (!after.status.includes("To delete") || !after.eraser) fail("the pad did not say the meeting was deleted, on New recording");
+
+  // Through Penelope: her answer names two meetings, her bubble asks once, Keep them keeps both and Delete all 2 deletes both.
+  const tidy = ["meetings/summaries/2026-11-20T09-00Z_tidy-one.md", "meetings/summaries/2026-11-20T09-00Z_tidy-two.md"];
+  await page.evaluate(async (paths) => {
+    const m = window.minutes;
+    for (const p of paths) {
+      await m.run("check", `${m.cd()} && printf "%s\\n" --- "title: Tidy ${p.includes("one") ? "one" : "two"}" --- "Stale." > ${p} && ` +
+        `printf "%s\\n" "[0:00] Speaker A: stale" > ${p.replace("summaries", "transcripts")}`, { followUp: true });
+      await m.keepMeeting(p);
+      await m.recordings.put(p, new Blob([new Uint8Array(64)], { type: "audio/wav" }));
+    }
+    await m.refresh(true);
+  }, tidy);
+  const left = () => page.evaluate(async (paths) => {
+    const m = window.minutes;
+    const kept = ((await m.notebook.all()) ?? []).filter(([path]) => path.includes("tidy-")).length;
+    let recordings = 0;
+    for (const p of paths) recordings += (await m.recordings.get(p)) ? 1 : 0;
+    return { listed: m.meetings.filter((x) => paths.includes(x.path)).length, kept, recordings };
+  }, tidy);
+  const answer = JSON.stringify({ say: "Two stale ones.", mood: "unsure", do: tidy.map((meeting) => ({ action: "delete_meeting", meeting })) });
+  const bubble = () => page.evaluate(() => ({
+    said: [...document.querySelectorAll("#penelope-log li.penelope-her")].at(-1)?.textContent ?? "",
+    buttons: [...document.querySelectorAll("#penelope-log .penelope-actions button")].map((b) => b.textContent),
+  }));
+  const first = await askPenelope(page, answer);
+  const offered = await bubble();
+  await page.click("#penelope-log .penelope-actions button >> text=Keep them").catch(() => {});
+  const keptBoth = { ...(await left()), buttons: (await bubble()).buttons.length };
+  await askPenelope(page, answer);
+  await page.click("#penelope-log .penelope-actions button >> text=Delete all 2").catch(() => {});
+  const done = await page
+    .waitForFunction(() => !window.minutes.removing && /^Deleted /.test([...document.querySelectorAll("#penelope-log li.penelope-her")].at(-1)?.textContent ?? ""), null, { timeout: 30_000 })
+    .then(() => true, () => false);
+  const tidied = { ...(await left()), said: (await bubble()).said };
+  console.log(`Minutes, deleting through Penelope: ${JSON.stringify({ answered: first.answered, offeredAction: first.command.includes("delete_meeting:"), offered, keptBoth, done, tidied })}`);
+  if (!first.answered || !first.command.includes("delete_meeting:")) fail("Penelope was not offered delete_meeting");
+  if (!/^Shall I delete “Tidy one” and “Tidy two”\?/.test(offered.said) || offered.buttons.join() !== "Delete all 2,Keep them") fail(`her bubble did not ask once for both meetings: ${JSON.stringify(offered)}`);
+  if (keptBoth.listed !== 2 || keptBoth.kept !== 4 || keptBoth.recordings !== 2 || keptBoth.buttons !== 0) fail(`Keep them did not keep both meetings: ${JSON.stringify(keptBoth)}`);
+  if (!done || tidied.listed !== 0 || tidied.kept !== 0 || tidied.recordings !== 0 || !tidied.said.includes("“Tidy one” and “Tidy two”")) fail(`Delete all 2 left something: ${JSON.stringify(tidied)}`);
 }
 
 // Without slivingdoc the notes are kept in this browser (notebookkeeper.js): a new tab, whose
@@ -3447,12 +3542,12 @@ async function checkNewVersion(context, url) {
     console.error(`\nFAIL: a newer version: ${text}`);
     process.exitCode = 1;
   };
-  const UNSTAMPED = '<meta name="penelope-version" content="dev">';
+  const UNSTAMPED = /<meta name="penelope-version" content="dev"\s*\/?>/;
   let stamped = 0;
   await page.route((u) => u.pathname === "/" || u.pathname.endsWith("/index.html"), async (route) => {
     const response = await route.fetch();
     const html = await response.text();
-    if (html.includes(UNSTAMPED)) stamped++;
+    if (UNSTAMPED.test(html)) stamped++;
     await route.fulfill({ response, body: html.replace(UNSTAMPED, '<meta name="penelope-version" content="old">') });
   });
   await page.route("**/version.json", (route) => route.fulfill({ contentType: "application/json", body: '{"version":"new"}\n' }));
@@ -3936,6 +4031,7 @@ try {
     await checkReview(page);
     await checkKnownPeople(page);
     await checkRename(page);
+    await checkDelete(page);
     await checkNotesOutliveReload(context, page, `http://localhost:${server.address().port}/`);
   }
   // Minutes' sign-out of a session that pasted a token: the app forgets the token, says the key
